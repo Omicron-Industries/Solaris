@@ -1,0 +1,34 @@
+modLoader = "javafml"
+loaderVersion = "[47,)"
+license = "${mod_license}"
+issueTrackerURL="https://github.com/Omicron-Industries/Solaris/issues" #optional
+
+[[mods]]
+    modId = "${mod_id}"
+    version = "${version}"
+    displayName = "${mod_name}"
+    mixinConfigs = "phoenix_solaris.mixins.json"
+    displayURL = "${mod_url}"
+    authors="${mod_author}"
+    description = '''
+Solaris — a Phoenix-original live terrain minimap and world map, with an overlay layer other Phoenix mods (like Phoenix Domains) hook into.
+'''
+
+    [[dependencies.${mod_id}]]
+        modId = "forge"
+        mandatory = true
+        versionRange = "[${forge_version},)"
+        ordering = "NONE"
+        side = "BOTH"
+    [[dependencies.${mod_id}]]
+        modId = "minecraft"
+        mandatory = true
+        versionRange = "[${minecraft_version},)"
+        ordering = "NONE"
+        side = "BOTH"
+    [[dependencies.${mod_id}]]
+        modId = "gtceu"
+        mandatory = false
+        versionRange = "[0,)"
+        ordering = "AFTER"
+        side = "CLIENT"

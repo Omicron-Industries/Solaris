@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "package": "net.phoenixvine.solaris.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "minVersion": "0.8",
+  "plugin": "net.phoenixvine.solaris.mixin.SolarisMixinPlugin",
+  "mixins": [
+    "DummyMixin"
+  ],
+  "client": [
+    "gtceu.GTClientCacheMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
