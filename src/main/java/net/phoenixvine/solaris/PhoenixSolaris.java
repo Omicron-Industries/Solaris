@@ -9,6 +9,7 @@ import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.phoenixvine.solaris.client.PhoenixSolarisClient;
 import net.phoenixvine.solaris.config.SolarisConfig;
+import net.phoenixvine.solaris.network.SolarisNetwork;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -35,5 +36,6 @@ public class PhoenixSolaris {
 
     private void commonSetup(final FMLCommonSetupEvent event) {
         event.enqueueWork(() -> LOGGER.info("Solaris initializing..."));
+        SolarisNetwork.init();
     }
 }

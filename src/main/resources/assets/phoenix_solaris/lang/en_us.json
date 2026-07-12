@@ -2,6 +2,8 @@
   "key.phoenix_solaris.map": "Open Map",
   "key.phoenix_solaris.new_waypoint": "New Waypoint Here",
   "key.phoenix_solaris.toggle_compass": "Toggle Waypoint Compass HUD",
+  "key.phoenix_solaris.toggle_minimap_rotate": "Toggle Minimap Rotation Lock",
+  "key.phoenix_solaris.cycle_minimap_style": "Cycle Minimap Size/Shape",
   "key.categories.phoenix_solaris": "Solaris",
   "solaris.map.title": "Solaris",
   "solaris.waypoint.added": "Waypoint added: %s (edit it from the Waypoints list)",

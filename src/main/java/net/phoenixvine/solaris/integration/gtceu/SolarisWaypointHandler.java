@@ -20,6 +20,9 @@ public class SolarisWaypointHandler implements com.gregtechceu.gtceu.integration
         // through removeWaypoint first — dedupe here so re-clicking a vein moves/renames its
         // waypoint instead of piling up duplicates.
         WaypointManager.remove(key);
+        // Silent skip, not a message — this fires from GTCEu's own scanner UI, not a Solaris
+        // screen, so there's no good place to surface feedback here.
+        if (!WaypointManager.canPlace(dim.location())) return;
 
         Waypoint waypoint = new Waypoint(name, dim.location(), x, y, z, String.format("%06X", color & 0xFFFFFF));
         waypoint.id = key;

@@ -4,6 +4,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.storage.LevelResource;
+import net.phoenixvine.solaris.api.SolarisAPI;
+import net.phoenixvine.solaris.api.SolarisFeatureState;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -54,8 +56,19 @@ public final class WaypointManager {
         return WAYPOINTS;
     }
 
+    /**
+     * The single funnel every waypoint-consuming renderer (the list screen, the HUD compass, the
+     * in-world beams, the minimap markers) already reads through — {@link
+     * SolarisAPI#FEATURE_WAYPOINTS} is enforced here once, at {@code VISIBLE} (the "can see
+     * existing waypoints at all" threshold — see {@link #canPlace} for the higher, "can create
+     * new ones" threshold), rather than at each of those call sites separately.
+     */
     public static List<Waypoint> getVisibleForDimension(ResourceLocation dimension) {
         ensureLoaded();
+        if (!SolarisAPI.getFeatureState(SolarisAPI.FEATURE_WAYPOINTS, dimension).atLeast(SolarisFeatureState.VISIBLE)) {
+            return List.of();
+        }
+
         List<Waypoint> out = new ArrayList<>();
         for (Waypoint w : WAYPOINTS) {
             if (w.visible && w.dimension.equals(dimension.toString()) &&
@@ -64,6 +77,11 @@ public final class WaypointManager {
             }
         }
         return out;
+    }
+
+    /** Whether a new waypoint may currently be placed in {@code dimension} — the {@code ENABLED} threshold. */
+    public static boolean canPlace(ResourceLocation dimension) {
+        return SolarisAPI.getFeatureState(SolarisAPI.FEATURE_WAYPOINTS, dimension).atLeast(SolarisFeatureState.ENABLED);
     }
 
     public static void add(Waypoint waypoint) {
@@ -76,6 +94,23 @@ public final class WaypointManager {
         ensureLoaded();
         WAYPOINTS.removeIf(w -> w.id.equals(id));
         if (id.equals(trackedId)) trackedId = null;
+        save();
+    }
+
+    /**
+     * Removes by name rather than id — used by server-triggered removal ({@code
+     * SolarisServerAPI#removeWaypoint}), since the server never tracked the client-generated
+     * {@link Waypoint#id}. Locked waypoints are still removable this way (a server/admin action is
+     * a distinct, higher-privilege path than the player's own Delete button, which is what {@code
+     * Waypoint#locked} actually restricts).
+     */
+    public static void removeByName(String name) {
+        ensureLoaded();
+        WAYPOINTS.removeIf(w -> {
+            boolean match = w.name.equals(name);
+            if (match && w.id.equals(trackedId)) trackedId = null;
+            return match;
+        });
         save();
     }
 

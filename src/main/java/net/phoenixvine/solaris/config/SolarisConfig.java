@@ -40,6 +40,12 @@ public final class SolarisConfig {
     public static final ForgeConfigSpec.IntValue PERF_LOG_THRESHOLD_MS;
     public static final ForgeConfigSpec.IntValue PERF_SUMMARY_INTERVAL_SECONDS;
     public static final ForgeConfigSpec.IntValue MAX_PERSISTED_CHUNKS_PER_DIMENSION;
+    public static final ForgeConfigSpec.BooleanValue MINIMAP_ROTATE;
+    public static final ForgeConfigSpec.EnumValue<net.phoenixvine.solaris.client.render.MinimapShape> MINIMAP_SHAPE;
+    public static final ForgeConfigSpec.BooleanValue SHOW_RAIL_NETWORK;
+    public static final ForgeConfigSpec.IntValue RAIL_NETWORK_RANGE;
+    public static final ForgeConfigSpec.IntValue MAX_MINIMAP_RANGE_CHUNKS;
+    public static final ForgeConfigSpec.IntValue WORLD_MAP_WRITE_RANGE_CHUNKS;
 
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
@@ -50,6 +56,14 @@ public final class SolarisConfig {
         MINIMAP_RADIUS_CHUNKS = builder
                 .comment("How many chunks in each direction the minimap's backing texture covers.")
                 .defineInRange("radiusChunks", 4, 1, 16);
+        MINIMAP_ROTATE = builder
+                .comment("Rotate the minimap so it always faces the direction you're looking (player " +
+                        "arrow fixed pointing up), instead of the default fixed north-up orientation.")
+                .define("rotate", false);
+        MINIMAP_SHAPE = builder
+                .comment("Outline shape of the corner minimap — square or circle. Cycled together with " +
+                        "minimap size by the \"cycle minimap style\" keybind.")
+                .defineEnum("shape", net.phoenixvine.solaris.client.render.MinimapShape.SQUARE);
         builder.pop();
 
         builder.push("map");
@@ -124,6 +138,14 @@ public final class SolarisConfig {
                         "a lot of markers on screen at once, a label fixed to one side can run off the " +
                         "map's edge or overlap a neighboring icon — pick whichever side fits your layout.")
                 .defineEnum("labelSide", LabelSide.RIGHT);
+        SHOW_RAIL_NETWORK = builder
+                .comment("Draw connected rail track as a clean line overlay (like a transit map), instead of " +
+                        "just the flat per-pixel rail color already baked into the terrain.")
+                .define("showRailNetwork", true);
+        RAIL_NETWORK_RANGE = builder
+                .comment("The rail-line overlay only renders within this many blocks of the player, to avoid " +
+                        "scanning/drawing across the whole loaded area every frame.")
+                .defineInRange("railNetworkRange", 256, 16, 2048);
         builder.pop();
 
         builder.push("waypoints");
@@ -165,6 +187,20 @@ public final class SolarisConfig {
         LIVE_REFRESH_RADIUS_CHUNKS = builder
                 .comment("How many chunks around the player get re-sampled on each live refresh pass.")
                 .defineInRange("liveRefreshRadiusChunks", 8, 2, 32);
+        builder.pop();
+
+        builder.push("featureRanges");
+        MAX_MINIMAP_RANGE_CHUNKS = builder
+                .comment("Server-owner safety ceiling on the minimap's radius (minimapRadiusChunks), " +
+                        "independent of any per-player/team feature-state toggle — a static cap, not something " +
+                        "an event/progression system grants per player.")
+                .defineInRange("maxMinimapRangeChunks", 16, 1, 32);
+        WORLD_MAP_WRITE_RANGE_CHUNKS = builder
+                .comment("Server-owner safety ceiling (in chunks, from the player) on how far the world map is " +
+                        "allowed to actively sample/write new chunk data, when the per-player/team world-map " +
+                        "feature state is ENABLED. Browsing already-cached data beyond this range is unaffected " +
+                        "— this only caps new writes.")
+                .defineInRange("worldMapWriteRangeChunks", 32, 2, 128);
         builder.pop();
 
         builder.push("cache");

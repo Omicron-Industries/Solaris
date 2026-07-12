@@ -18,6 +18,9 @@ public class DeathMarkerHandler {
 
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || event.getEntity() != mc.player) return;
+        // Per the "shouldn't be placed when waypoints are off" requirement — a silent skip, not
+        // a message, since dying is already disruptive enough without an extra chat line.
+        if (!WaypointManager.canPlace(mc.player.level().dimension().location())) return;
 
         Waypoint waypoint = new Waypoint("Death", mc.player.level().dimension().location(),
                 mc.player.getBlockX(), mc.player.getBlockY(), mc.player.getBlockZ(), "FF3B30");

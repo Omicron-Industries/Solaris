@@ -31,10 +31,24 @@ public class SolarisKeybinds {
             GLFW.GLFW_KEY_UNKNOWN,
             "key.categories.phoenix_solaris");
 
+    public static final KeyMapping TOGGLE_MINIMAP_ROTATE = new KeyMapping(
+            "key.phoenix_solaris.toggle_minimap_rotate",
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_UNKNOWN,
+            "key.categories.phoenix_solaris");
+
+    public static final KeyMapping CYCLE_MINIMAP_STYLE = new KeyMapping(
+            "key.phoenix_solaris.cycle_minimap_style",
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_UNKNOWN,
+            "key.categories.phoenix_solaris");
+
     @SubscribeEvent
     public static void register(RegisterKeyMappingsEvent event) {
         event.register(OPEN_MAP);
         event.register(NEW_WAYPOINT);
         event.register(TOGGLE_COMPASS);
+        event.register(TOGGLE_MINIMAP_ROTATE);
+        event.register(CYCLE_MINIMAP_STYLE);
     }
 }

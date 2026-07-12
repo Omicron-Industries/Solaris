@@ -18,7 +18,11 @@ import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.phoenixvine.solaris.PhoenixSolaris;
+import net.phoenixvine.solaris.api.SolarisAPI;
+import net.phoenixvine.solaris.api.SolarisFeatureState;
 import net.phoenixvine.solaris.client.color.ChunkKey;
+import net.phoenixvine.solaris.client.color.ChunkRailCache;
+import net.phoenixvine.solaris.client.perf.SolarisProfiler;
 import net.phoenixvine.solaris.client.plan.PlanShape;
 import net.phoenixvine.solaris.client.plan.PlanShapeListScreen;
 import net.phoenixvine.solaris.client.plan.PlanShapeManager;
@@ -198,6 +202,7 @@ public class SolarisMapScreen extends Screen {
     private static final ItemStack PLAN_ICON = new ItemStack(Items.SCAFFOLDING);
     private static final ItemStack SHAPES_ICON = new ItemStack(Items.WRITABLE_BOOK);
     private static final ItemStack EXPORT_ICON = new ItemStack(Items.PAPER);
+    private static final ItemStack GOTO_ICON = new ItemStack(Items.COMPASS);
 
     private void buildIconButtons() {
         iconButtons.clear();
@@ -211,12 +216,19 @@ public class SolarisMapScreen extends Screen {
         int exportX = settingsX + BUTTON_GAP;
         iconButtons.add(new IconButton(exportX, bottomY, "Export as PNG",
                 (g, hover) -> drawItemIcon(g, exportX, bottomY, EXPORT_ICON),
-                () -> texture().exportToPng(SolarisMapScreen::sendMapMessage)));
+                () -> runIfEnabled(SolarisAPI.FEATURE_PNG_EXPORT,
+                        () -> texture().exportToPng(SolarisMapScreen::sendMapMessage))));
+
+        int gotoX = exportX + BUTTON_GAP;
+        iconButtons.add(new IconButton(gotoX, bottomY, "Go to Coordinate",
+                (g, hover) -> drawItemIcon(g, gotoX, bottomY, GOTO_ICON),
+                () -> Minecraft.getInstance().setScreen(new QuickGotoScreen(this))));
 
         int waypointsX = width - BUTTON_MARGIN - BUTTON_R;
         iconButtons.add(new IconButton(waypointsX, bottomY, "Waypoints",
                 (g, hover) -> drawItemIcon(g, waypointsX, bottomY, WAYPOINTS_ICON),
-                () -> Minecraft.getInstance().setScreen(new WaypointListScreen(this))));
+                () -> runIfStateAtLeast(SolarisAPI.FEATURE_WAYPOINTS, SolarisFeatureState.VISIBLE,
+                        () -> Minecraft.getInstance().setScreen(new WaypointListScreen(this)))));
 
         int themeX = waypointsX - BUTTON_GAP;
         iconButtons.add(new IconButton(themeX, bottomY, "Theme",
@@ -228,26 +240,60 @@ public class SolarisMapScreen extends Screen {
         int globeX = themeX - BUTTON_GAP;
         iconButtons.add(new IconButton(globeX, bottomY, "Globe View",
                 (g, hover) -> drawGlobeIcon(g, globeX, bottomY),
-                () -> {
+                () -> runIfEnabled(SolarisAPI.FEATURE_GLOBE_VIEW, () -> {
                     // Drawing is flat-map only — switching to the globe mid-shape would leave
                     // dangling, meaningless draw state, so cancel it on the way out.
                     if (mode == ViewMode.FLAT) cancelDrawing();
                     mode = mode == ViewMode.FLAT ? ViewMode.GLOBE : ViewMode.FLAT;
-                }));
+                })));
 
         int shapesX = globeX - BUTTON_GAP;
         iconButtons.add(new IconButton(shapesX, bottomY, "Shapes",
                 (g, hover) -> drawItemIcon(g, shapesX, bottomY, SHAPES_ICON),
-                () -> Minecraft.getInstance().setScreen(new PlanShapeListScreen(this))));
+                () -> runIfEnabled(SolarisAPI.FEATURE_SHAPE_PLANNER,
+                        () -> Minecraft.getInstance().setScreen(new PlanShapeListScreen(this)))));
 
         int planX = shapesX - BUTTON_GAP;
         iconButtons.add(new IconButton(planX, bottomY, "Plan",
                 (g, hover) -> drawItemIcon(g, planX, bottomY, PLAN_ICON),
-                () -> {
+                () -> runIfEnabled(SolarisAPI.FEATURE_SHAPE_PLANNER, () -> {
                     // Drawing is flat-map only — jump there automatically instead of a dead click.
                     mode = ViewMode.FLAT;
                     switchDrawTool(ToolMode.DRAW_RECTANGLE);
-                }));
+                })));
+    }
+
+    /**
+     * Runs {@code action} only if {@link SolarisAPI#isFeatureEnabled(String, ResourceLocation)}
+     * says {@code featureId} is currently allowed in the player's current dimension — the actual
+     * enforcement point for every gateable icon-button action, including any {@link
+     * SolarisAPI#requireTier} progression threshold registered against it. Silently blocking a
+     * click with no feedback reads as a broken button, not a deliberate restriction, so this
+     * always tells the player something happened either way.
+     */
+    private static void runIfEnabled(String featureId, Runnable action) {
+        Minecraft mc = Minecraft.getInstance();
+        ResourceLocation dimension = mc.level != null ? mc.level.dimension().location() : null;
+        if (dimension != null ? SolarisAPI.isFeatureEnabled(featureId, dimension) :
+                SolarisAPI.isFeatureEnabled(featureId)) {
+            action.run();
+        } else {
+            sendMapMessage(Component.literal("This feature isn't available right now."));
+        }
+    }
+
+    /**
+     * {@link SolarisFeatureState} counterpart to {@link #runIfEnabled} — for the tri-state features (waypoints,
+     * minimap, world map, underground map) rather than the plain boolean ones.
+     */
+    private static void runIfStateAtLeast(String featureId, SolarisFeatureState minimum, Runnable action) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) return;
+        if (SolarisAPI.getFeatureState(featureId, mc.level.dimension().location()).atLeast(minimum)) {
+            action.run();
+        } else {
+            sendMapMessage(Component.literal("This feature isn't available right now."));
+        }
     }
 
     /**
@@ -304,7 +350,77 @@ public class SolarisMapScreen extends Screen {
     }
 
     private void clampViewport() {
+        recenterIfNeeded();
         viewport.clampOffsetToCover(texture().getSizePixels(), MARGIN, width - 2 * MARGIN, MARGIN, height - 2 * MARGIN);
+    }
+
+    /**
+     * The backing {@link SolarisTexture} only ever covers a fixed {@code radiusChunks} square —
+     * previously it was centered on the player's position at screen-open time and never moved
+     * again, so panning far enough away from the player (e.g. toward another already-explored
+     * area) just hit {@link #clampViewport}'s frame-covering pin with nothing but fog beyond it,
+     * even though that far-away terrain was genuinely already sampled/persisted (see {@code
+     * PersistentChunkStore}). This re-centers the texture on wherever the view has actually
+     * panned to instead, once the view's center has drifted into a different chunk than {@link
+     * #anchorChunkX}/{@link #anchorChunkZ} — {@link SolarisTexture#rebuild} already reads through
+     * to disk-persisted data for any center, so recentering alone is enough to surface it, no new
+     * lookup path needed. The viewport offset is compensated in the same step so the on-screen
+     * content doesn't visually jump the moment the anchor shifts. {@link SolarisTexture#rebuild}
+     * never touches live block data (only the in-memory/disk chunk-color cache), so recentering
+     * onto a far, currently-unloaded chunk is safe — it renders fog for anything never explored,
+     * same as any other uncached chunk.
+     */
+    private void recenterIfNeeded() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null || mode != ViewMode.FLAT) return;
+
+        double frameCenterX = MARGIN + (width - 2 * MARGIN) / 2.0;
+        double frameCenterY = MARGIN + (height - 2 * MARGIN) / 2.0;
+        double texLocalX = viewport.toWorldX(frameCenterX, 0);
+        double texLocalZ = viewport.toWorldZ(frameCenterY, 0);
+        int viewWorldX = (int) Math.floor(texLocalX - radiusPixels + (anchorChunkX << 4));
+        int viewWorldZ = (int) Math.floor(texLocalZ - radiusPixels + (anchorChunkZ << 4));
+        int viewChunkX = viewWorldX >> 4;
+        int viewChunkZ = viewWorldZ >> 4;
+
+        if (viewChunkX == anchorChunkX && viewChunkZ == anchorChunkZ) return;
+
+        int deltaChunkX = viewChunkX - anchorChunkX;
+        int deltaChunkZ = viewChunkZ - anchorChunkZ;
+
+        viewport.pan(deltaChunkX * 16.0 * viewport.getZoom(), deltaChunkZ * 16.0 * viewport.getZoom());
+        if (hasPlayerMarker) {
+            playerPixelX -= deltaChunkX * 16.0;
+            playerPixelZ -= deltaChunkZ * 16.0;
+        }
+
+        anchorChunkX = viewChunkX;
+        anchorChunkZ = viewChunkZ;
+        centerKey = ChunkKey.of(mc.level, new ChunkPos(anchorChunkX, anchorChunkZ));
+        texture().maybeRebuild(centerKey);
+    }
+
+    /**
+     * Pans the flat map so ({@code worldX}, {@code worldZ}) sits centered in the frame, switching
+     * to {@link ViewMode#FLAT} first if the globe was open (jumping the globe's rotation to a
+     * coordinate is a different problem — see {@link QuickGotoScreen}'s doc — not supported here).
+     * Only actually shows real terrain if the target is within the currently-loaded texture's own
+     * radius around the player; further out, {@link #clampViewport} pins the pan as close as it
+     * can, same as manually panning past the edge already does — there's no separate "teleport
+     * across the whole map" concept, the backing texture itself only ever covers a fixed radius.
+     */
+    public void goToCoordinate(int worldX, int worldZ) {
+        if (mode == ViewMode.GLOBE) {
+            cancelDrawing();
+            mode = ViewMode.FLAT;
+        }
+
+        double pixelX = shapePixelX(worldX);
+        double pixelZ = shapePixelZ(worldZ);
+        double frameCenterX = MARGIN + (width - 2 * MARGIN) / 2.0;
+        double frameCenterY = MARGIN + (height - 2 * MARGIN) / 2.0;
+        viewport.setOffset(frameCenterX - pixelX * viewport.getZoom(), frameCenterY - pixelZ * viewport.getZoom());
+        clampViewport();
     }
 
     private double waypointPixelX(Waypoint w) {
@@ -357,6 +473,10 @@ public class SolarisMapScreen extends Screen {
 
         g.disableScissor();
 
+        // Globe zoom is a screen-space sphere radius, not a flat blocks-per-pixel ratio — a bar
+        // computed the same way would be meaningless there, so this is flat-map only.
+        if (mode == ViewMode.FLAT) drawScaleBar(g);
+
         super.render(g, mx, my, partialTick);
 
         g.drawCenteredString(font, title, width / 2, 6, C_ACCENT);
@@ -391,6 +511,43 @@ public class SolarisMapScreen extends Screen {
         }
     }
 
+    /**
+     * A JourneyMap-style scale bar, top-left corner (the title occupies top-center, every icon
+     * button lives along the bottom edge — top-left is the one spot with nothing else in it). A
+     * flat map has no other way to judge real distance at a glance beyond mentally converting
+     * screen pixels via the zoom percentage.
+     */
+    private void drawScaleBar(GuiGraphics g) {
+        float zoom = viewport.getZoom();
+        if (zoom <= 0) return;
+
+        int targetPx = 60;
+        double blocks = niceScaleNumber(targetPx / zoom);
+        int barPx = Math.max(1, (int) Math.round(blocks * zoom));
+
+        int x = MARGIN + 10;
+        int y = MARGIN + 12;
+        g.fill(x, y, x + barPx, y + 2, C_TEXT);
+        g.fill(x, y - 2, x + 1, y + 5, C_TEXT);
+        g.fill(x + barPx - 1, y - 2, x + barPx, y + 5, C_TEXT);
+
+        String label = blocks >= 1000 ? Math.round(blocks / 1000) + "k blocks" : Math.round(blocks) + " blocks";
+        g.drawString(font, label, x, y + 7, C_TEXT, true);
+    }
+
+    /** Rounds {@code raw} down to the nearest "nice" 1/2/5 x 10^n step — the same convention chart/ruler axes use. */
+    private static double niceScaleNumber(double raw) {
+        if (raw <= 0) return 1;
+        double magnitude = Math.pow(10, Math.floor(Math.log10(raw)));
+        double fraction = raw / magnitude;
+        double niceFraction;
+        if (fraction < 1.5) niceFraction = 1;
+        else if (fraction < 3.5) niceFraction = 2;
+        else if (fraction < 7.5) niceFraction = 5;
+        else niceFraction = 10;
+        return niceFraction * magnitude;
+    }
+
     private String footerHint() {
         return switch (toolMode) {
             case NAVIGATE -> "Right-click: new waypoint (or delete one)";
@@ -415,6 +572,12 @@ public class SolarisMapScreen extends Screen {
         int destSize = (int) (size * viewport.getZoom());
         g.blit(tex.textureId(), destX, destY, destSize, destSize, 0, 0, size, size, size, size);
 
+        Minecraft mc = Minecraft.getInstance();
+        if (SolarisConfig.SHOW_RAIL_NETWORK.get() && mc.level != null) {
+            ResourceLocation dimension = mc.level.dimension().location();
+            SolarisProfiler.time("railNetworkRender", () -> drawRailNetwork(g, dimension));
+        }
+
         // Marker size scales with zoom (clamped so they never vanish zoomed-out or balloon zoomed-in),
         // then with the player's configured icon size on top of that — markers are drawn "on"
         // the map, not as fixed-size UI chrome floating over it.
@@ -424,7 +587,6 @@ public class SolarisMapScreen extends Screen {
 
         LabelSide labelSide = SolarisConfig.LABEL_SIDE.get();
 
-        Minecraft mc = Minecraft.getInstance();
         if (mc.level != null) {
             List<Waypoint> waypoints = WaypointManager.getVisibleForDimension(mc.level.dimension().location());
             for (Waypoint w : waypoints) {
@@ -538,6 +700,66 @@ public class SolarisMapScreen extends Screen {
 
     private double shapePixelZ(int worldZ) {
         return radiusPixels + (worldZ - (anchorChunkZ << 4));
+    }
+
+    /**
+     * Flat rail-gray, matching {@code BlockColorOverrides}' own rail color so the line overlay reads as an extension of
+     * the terrain, not a separate system.
+     */
+    private static final int RAIL_LINE_COLOR = 0xFFB6B6B6;
+
+    /**
+     * Connected-rail-line overlay ("like a subway map") — {@link ChunkRailCache}'s per-column
+     * flags on their own would just be scattered dots at typical zoom, not a railway; drawing an
+     * actual line between adjacent rail columns is what reads as track. Iterates whole cached
+     * chunk arrays (one {@link ChunkRailCache#get} per chunk) rather than {@link
+     * ChunkRailCache#isRailAt} per column — a per-column lookup re-derives the same chunk key and
+     * re-acquires the cache's lock for every single one of the (up to) tens of thousands of
+     * columns {@link SolarisConfig#RAIL_NETWORK_RANGE} can cover, which is measurably worse than
+     * paying that cost once per chunk and then reading the returned array directly.
+     */
+    private void drawRailNetwork(GuiGraphics g, ResourceLocation dimension) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return;
+
+        int range = SolarisConfig.RAIL_NETWORK_RANGE.get();
+        int centerChunkX = mc.player.getBlockX() >> 4;
+        int centerChunkZ = mc.player.getBlockZ() >> 4;
+        int chunkRadius = (range >> 4) + 1;
+        int thickness = Math.max(1, Math.round(1.5f * viewport.getZoom()));
+
+        for (int cz = centerChunkZ - chunkRadius; cz <= centerChunkZ + chunkRadius; cz++) {
+            for (int cx = centerChunkX - chunkRadius; cx <= centerChunkX + chunkRadius; cx++) {
+                boolean[] rails = ChunkRailCache.get(new ChunkKey(dimension, cx, cz));
+                if (rails == null) continue;
+                boolean[] eastRails = ChunkRailCache.get(new ChunkKey(dimension, cx + 1, cz));
+                boolean[] southRails = ChunkRailCache.get(new ChunkKey(dimension, cx, cz + 1));
+
+                for (int lz = 0; lz < 16; lz++) {
+                    for (int lx = 0; lx < 16; lx++) {
+                        if (!rails[lz * 16 + lx]) continue;
+                        int wx = (cx << 4) + lx;
+                        int wz = (cz << 4) + lz;
+
+                        boolean eastRail = lx < 15 ? rails[lz * 16 + lx + 1] : eastRails != null && eastRails[lz * 16];
+                        if (eastRail) drawRailSegment(g, wx, wz, wx + 1, wz, thickness);
+
+                        boolean southRail = lz < 15 ? rails[(lz + 1) * 16 + lx] : southRails != null && southRails[lx];
+                        if (southRail) drawRailSegment(g, wx, wz, wx, wz + 1, thickness);
+                    }
+                }
+            }
+        }
+    }
+
+    private void drawRailSegment(GuiGraphics g, int wx1, int wz1, int wx2, int wz2, int thickness) {
+        int x1 = (int) viewport.toScreenX(shapePixelX(wx1), 0);
+        int y1 = (int) viewport.toScreenY(shapePixelZ(wz1), 0);
+        int x2 = (int) viewport.toScreenX(shapePixelX(wx2), 0);
+        int y2 = (int) viewport.toScreenY(shapePixelZ(wz2), 0);
+        if ((x1 < MARGIN && x2 < MARGIN) || (x1 > width - MARGIN && x2 > width - MARGIN)) return;
+        if ((y1 < MARGIN && y2 < MARGIN) || (y1 > height - MARGIN && y2 > height - MARGIN)) return;
+        LineRenderer.drawLine(g, x1, y1, x2, y2, thickness, RAIL_LINE_COLOR);
     }
 
     /** Flat-map outline for one shape, saved or (via {@link #drawShapePreview}) still being drawn. */
@@ -749,6 +971,13 @@ public class SolarisMapScreen extends Screen {
      * Explicitly an opt-in "cheat" toggle (off by default) rather than always-on: unlike the
      * rest of the map, this reveals block identity — including in chunks you haven't actually
      * looked at up close — which is real information you wouldn't otherwise have.
+     *
+     * The X/Y/Z suffix is a second, independent gate on top of the block-name toggle above —
+     * {@link SolarisAPI#FEATURE_SHOW_COORDINATES}, this map's one wired example of an
+     * {@link SolarisAPI#requireTier} progression gate (see that class's doc). A player can have
+     * the block-tooltip preference on but coordinates not yet unlocked; the name still shows,
+     * just without the numbers, rather than hiding the whole tooltip over a single locked piece
+     * of it.
      */
     private Component hoveredBlockName(int mx, int my) {
         if (mx < MARGIN || mx > width - MARGIN || my < MARGIN || my > height - MARGIN) return null;
@@ -763,7 +992,12 @@ public class SolarisMapScreen extends Screen {
         int blockY = mc.level.getHeight(Heightmap.Types.WORLD_SURFACE, blockX, blockZ) - 1;
 
         BlockPos pos = new BlockPos(blockX, blockY, blockZ);
-        return mc.level.getBlockState(pos).getBlock().getName();
+        Component name = mc.level.getBlockState(pos).getBlock().getName();
+
+        ResourceLocation dimension = mc.level.dimension().location();
+        if (!SolarisAPI.isFeatureEnabled(SolarisAPI.FEATURE_SHOW_COORDINATES, dimension)) return name;
+        return name.copy().append(Component.literal(" (" + blockX + ", " + blockY + ", " + blockZ + ")")
+                .withStyle(net.minecraft.ChatFormatting.GRAY));
     }
 
     @Override

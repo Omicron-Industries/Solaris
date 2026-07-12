@@ -107,7 +107,10 @@ public final class CaveColorSampler {
         return pixels;
     }
 
-    /** Scales an already-ABGR-packed pixel's RGB channels by {@code factor}, clamped to a valid byte — same convention as {@code ChunkColorSampler}'s own copy. */
+    /**
+     * Scales an already-ABGR-packed pixel's RGB channels by {@code factor}, clamped to a valid byte — same convention
+     * as {@code ChunkColorSampler}'s own copy.
+     */
     private static int scaleBrightness(int abgr, double factor) {
         if (factor == 1.0) return abgr;
         int a = abgr >>> 24;

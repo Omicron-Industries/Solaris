@@ -33,6 +33,13 @@ repositories {
             includeGroup 'com.gregtechceu.gtceu'
         }
     }
+    flatDir {
+        // Phoenix Guilds — optional guild-scoped waypoint sharing only, see integration.guilds.
+        // Not a published artifact (a sibling repo, not on any Maven repo); Guilds' own
+        // publishToSolaris Gradle task copies its jar in here directly, same local-jar pattern
+        // Phoenix Domains already uses for its own dependency on Solaris.
+        dir 'libs'
+    }
 }
 
 version = mod_version
@@ -95,6 +102,12 @@ dependencies {
     // veins on the map. See integration.gtceu for the isAvailable()-guarded access pattern.
     modCompileOnly("com.gregtechceu.gtceu:gtceu-${minecraft_version}:${gtceu_version}:slim") { transitive = false }
     modRuntimeOnly("com.gregtechceu.gtceu:gtceu-${minecraft_version}:${gtceu_version}:slim") { transitive = false }
+
+    // Optional guild-scoped waypoint sharing — Phoenix Guilds isn't required to run Solaris,
+    // only to share a waypoint to your guildmates. See integration.guilds for the
+    // isAvailable()-guarded access pattern (mirrors the gtceu integration above).
+    modCompileOnly 'local:phoenix_guilds:0.1.0'
+    modRuntimeOnly 'local:phoenix_guilds:0.1.0'
 
     // lombok
     compileOnly 'org.projectlombok:lombok:1.18.24'

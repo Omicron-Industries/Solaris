@@ -32,3 +32,9 @@ Solaris — a Phoenix-original live terrain minimap and world map, with an overl
         versionRange = "[0,)"
         ordering = "AFTER"
         side = "CLIENT"
+    [[dependencies.${mod_id}]]
+        modId = "phoenix_guilds"
+        mandatory = false
+        versionRange = "[0,)"
+        ordering = "AFTER"
+        side = "BOTH"

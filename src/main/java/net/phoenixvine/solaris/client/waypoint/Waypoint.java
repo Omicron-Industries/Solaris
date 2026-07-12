@@ -31,6 +31,12 @@ public class Waypoint {
      * Hex color for the name label on the map — "" means "use the current theme's text color" (the old, only behavior).
      */
     public String labelColor = "";
+    /**
+     * Server/admin-placed waypoints can be marked unremovable — {@link WaypointListScreen}
+     * disables its Delete button while this is set, but {@link #visible} stays freely toggleable
+     * regardless (hiding, unlike deleting, is always allowed for accessibility).
+     */
+    public boolean locked = false;
 
     public Waypoint() {} // Gson
 

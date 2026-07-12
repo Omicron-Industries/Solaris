@@ -12,6 +12,8 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.phoenixvine.solaris.PhoenixSolaris;
+import net.phoenixvine.solaris.api.SolarisAPI;
+import net.phoenixvine.solaris.api.SolarisFeatureState;
 import net.phoenixvine.solaris.client.SolarisThemeUtils;
 import net.phoenixvine.solaris.client.color.CaveColorSampler;
 import net.phoenixvine.solaris.client.color.ChunkColorCache;
@@ -179,10 +181,17 @@ public class SolarisTexture implements AutoCloseable {
      * than either vanilla's fake static or a broken solid-roof-color map. {@code hasCeiling()} is
      * checked unconditionally (not gated behind an X/Z heightmap comparison the way ordinary
      * underground detection is), since that comparison is exactly the thing that's meaningless in
-     * a ceiling dimension in the first place.
+     * a ceiling dimension in the first place. Also derives the "underground map" per-player/team
+     * feature state (see {@link SolarisFeatureState}'s doc) here rather than storing a separate
+     * flag — cave-slice mode never actually engages, in any dimension including the Nether,
+     * unless {@link SolarisAPI#FEATURE_UNDERGROUND_MAP} is at least {@code VISIBLE}.
      */
     private static boolean isCaveSliceMode(Level level, Player player) {
         if (level == null) return false;
+        if (!SolarisAPI.getFeatureState(SolarisAPI.FEATURE_UNDERGROUND_MAP, level.dimension().location())
+                .atLeast(SolarisFeatureState.VISIBLE)) {
+            return false;
+        }
         if (level.dimensionType().hasCeiling()) return true;
         return player != null && CaveColorSampler.isUnderground(level, player.blockPosition());
     }

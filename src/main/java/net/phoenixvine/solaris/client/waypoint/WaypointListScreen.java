@@ -9,7 +9,11 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.phoenixvine.solaris.api.SolarisAPI;
 import net.phoenixvine.solaris.client.render.VanillaPanel;
+import net.phoenixvine.solaris.integration.guilds.GuildsIntegration;
+import net.phoenixvine.solaris.network.C2SShareWaypointPacket;
+import net.phoenixvine.solaris.network.SolarisNetwork;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -166,15 +170,25 @@ public class WaypointListScreen extends Screen {
                     }).bounds(editX, y, sideW - 20, 18).build());
             y += ROW_H + 8;
 
+            if (GuildsIntegration.isAvailable()) {
+                addRenderableWidget(Button.builder(Component.literal("Share to Guild"), b -> shareSelected())
+                        .bounds(editX, y, sideW - 20, 18).build());
+                y += ROW_H + 8;
+            }
+
             addRenderableWidget(Button.builder(Component.literal("Save"), b -> saveSelected())
                     .bounds(editX, y, sideW - 20, 18).build());
             y += ROW_H + 4;
 
-            addRenderableWidget(Button.builder(Component.literal("Delete"), b -> {
-                WaypointManager.remove(selected.id);
-                selected = null;
-                init();
-            }).bounds(editX, y, sideW - 20, 18).build());
+            Button deleteButton = Button.builder(
+                    Component.literal(selected.locked ? "Delete (locked)" : "Delete"), b -> {
+                        if (selected.locked) return;
+                        WaypointManager.remove(selected.id);
+                        selected = null;
+                        init();
+                    }).bounds(editX, y, sideW - 20, 18).build();
+            deleteButton.active = !selected.locked;
+            addRenderableWidget(deleteButton);
         }
 
         addRenderableWidget(Button.builder(Component.literal("Close"), b -> onClose())
@@ -184,6 +198,10 @@ public class WaypointListScreen extends Screen {
     private void addHere() {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
+        if (!WaypointManager.canPlace(mc.level.dimension().location())) {
+            mc.player.displayClientMessage(Component.literal("Waypoints aren't available here."), true);
+            return;
+        }
         List<Waypoint> existing = WaypointManager.getAll();
         String name = "Waypoint " + (existing.size() + 1);
         Waypoint w = new Waypoint(name, mc.level.dimension().location(),
@@ -200,6 +218,29 @@ public class WaypointListScreen extends Screen {
     private String truncate(String text, int maxWidth) {
         if (font.width(text) <= maxWidth) return text;
         return font.plainSubstrByWidth(text, maxWidth - font.width("…")) + "…";
+    }
+
+    /**
+     * Sends the currently-selected waypoint to the server for routing to the sender's online
+     * guildmates (see {@code C2SShareWaypointPacket}) — the client only decides whether to show
+     * this button at all ({@link GuildsIntegration#isAvailable()}, a plain mod-loaded check);
+     * actual guild membership is resolved server-side, where it actually lives.
+     */
+    private void shareSelected() {
+        if (selected == null) return;
+        Minecraft mc = Minecraft.getInstance();
+        // Gated against wherever the player actually is right now, not the waypoint's own
+        // dimension — this is "can I use the sharing feature at all", the same "am I allowed to
+        // do this from here" question every other gated action asks.
+        boolean allowed = mc.level != null ?
+                SolarisAPI.isFeatureEnabled(SolarisAPI.FEATURE_GUILD_SHARE, mc.level.dimension().location()) :
+                SolarisAPI.isFeatureEnabled(SolarisAPI.FEATURE_GUILD_SHARE);
+        if (!allowed) {
+            mc.player.displayClientMessage(Component.literal("Sharing isn't available right now."), true);
+            return;
+        }
+        SolarisNetwork.CHANNEL.sendToServer(new C2SShareWaypointPacket(selected.name, selected.dimension,
+                selected.x, selected.y, selected.z, selected.color, selected.icon));
     }
 
     private void saveSelected() {

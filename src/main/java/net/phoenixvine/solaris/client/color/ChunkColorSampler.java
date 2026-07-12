@@ -363,16 +363,29 @@ public final class ChunkColorSampler {
         return pixels;
     }
 
-    /** Paired output of {@link #sampleHeights} — height plus whether that column's surface is water. */
+    /**
+     * Paired output of {@link #sampleHeights} — height, whether that column's surface is water, and whether it's rail.
+     */
     public static final class HeightSample {
 
         public final int[] heights;
         public final boolean[] water;
+        public final boolean[] rails;
 
-        private HeightSample(int[] heights, boolean[] water) {
+        private HeightSample(int[] heights, boolean[] water, boolean[] rails) {
             this.heights = heights;
             this.water = water;
+            this.rails = rails;
         }
+    }
+
+    /**
+     * Every vanilla rail variant — same set {@link BlockColorOverrides} colors flat gray, reused here for the
+     * connected-line overlay.
+     */
+    private static boolean isRail(BlockState state) {
+        return state.is(Blocks.RAIL) || state.is(Blocks.POWERED_RAIL) || state.is(Blocks.DETECTOR_RAIL) ||
+                state.is(Blocks.ACTIVATOR_RAIL);
     }
 
     /**
@@ -392,6 +405,7 @@ public final class ChunkColorSampler {
     public static HeightSample sampleHeights(Level level, ChunkPos pos) {
         int[] heights = new int[256];
         boolean[] water = new boolean[256];
+        boolean[] rails = new boolean[256];
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
 
         for (int lz = 0; lz < 16; lz++) {
@@ -421,9 +435,13 @@ public final class ChunkColorSampler {
                 // exemption there as it does in sample()'s own relief calc, for the same reason.
                 water[lz * 16 + lx] = state.getMapColor(level, cursor) == MapColor.WATER || isAquaticPlant(state) ||
                         isIce(state);
+                // Rails have a BlockColorOverrides entry, so the descend loop above stops right
+                // at them (never walks past, same as any other overridden NONE-color block) —
+                // the settled state here really is the rail itself when one's present.
+                rails[lz * 16 + lx] = isRail(state);
             }
         }
-        return new HeightSample(heights, water);
+        return new HeightSample(heights, water, rails);
     }
 
     /**

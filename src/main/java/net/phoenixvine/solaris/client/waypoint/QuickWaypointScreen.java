@@ -166,6 +166,12 @@ public class QuickWaypointScreen extends Screen {
     }
 
     private void save() {
+        if (!WaypointManager.canPlace(dimension)) {
+            Minecraft.getInstance().player.displayClientMessage(
+                    Component.literal("Waypoints aren't available here."), true);
+            onClose();
+            return;
+        }
         String name = nameBox.getValue().isBlank() ? "Waypoint" : nameBox.getValue();
         String color = colorBox.getValue().isBlank() ? "FFFFFFFF" : colorBox.getValue();
         int wx = coord(xBox, initialX);

@@ -9,6 +9,8 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.phoenixvine.solaris.PhoenixSolaris;
+import net.phoenixvine.solaris.api.SolarisAPI;
+import net.phoenixvine.solaris.api.SolarisFeatureState;
 import net.phoenixvine.solaris.client.perf.SolarisProfiler;
 import net.phoenixvine.solaris.client.render.SolarisTexture;
 import net.phoenixvine.solaris.config.SolarisConfig;
@@ -46,36 +48,49 @@ public final class LiveChunkRefresh {
         if (++tickCounter < intervalTicks) return;
         tickCounter = 0;
 
-        long sweepStart = SolarisProfiler.start();
-        int radius = SolarisConfig.LIVE_REFRESH_RADIUS_CHUNKS.get();
-        int centerX = player.chunkPosition().x;
-        int centerZ = player.chunkPosition().z;
+        // WORLD_SURFACE sampling is wasted work in a ceiling dimension (the Nether) — see
+        // SolarisTexture.isCaveSliceMode's doc — since SolarisTexture never reads it there. Only
+        // the sweep itself is skipped; the save below still needs to run on schedule regardless
+        // of which dimension the player currently happens to be in, so any other dimension's
+        // still-dirty data isn't held up for an entire Nether visit.
+        boolean writeEnabled = SolarisAPI.getFeatureState(SolarisAPI.FEATURE_WORLD_MAP, level.dimension().location())
+                .atLeast(SolarisFeatureState.ENABLED);
 
-        boolean refreshedAny = false;
-        for (int dz = -radius; dz <= radius; dz++) {
-            for (int dx = -radius; dx <= radius; dx++) {
-                int chunkX = centerX + dx;
-                int chunkZ = centerZ + dz;
-                // hasChunk is a cheap "is this already loaded" check — never forces a chunk in,
-                // matching the read-only, best-effort spirit of this pass.
-                if (!level.hasChunk(chunkX, chunkZ)) continue;
+        if (writeEnabled && !level.dimensionType().hasCeiling()) {
+            long sweepStart = SolarisProfiler.start();
+            int radius = Math.min(SolarisConfig.LIVE_REFRESH_RADIUS_CHUNKS.get(),
+                    SolarisConfig.WORLD_MAP_WRITE_RANGE_CHUNKS.get());
+            int centerX = player.chunkPosition().x;
+            int centerZ = player.chunkPosition().z;
 
-                ChunkKey key = ChunkKey.of(level, new ChunkPos(chunkX, chunkZ));
-                SolarisProfiler.time("chunkSample", () -> {
-                    int[] pixels = ChunkColorSampler.sample(level, key.toChunkPos());
-                    ChunkColorSampler.HeightSample heightSample = ChunkColorSampler.sampleHeights(level,
-                            key.toChunkPos());
-                    ChunkColorCache.put(key, pixels);
-                    ChunkHeightCache.put(key, heightSample.heights);
-                    ChunkWaterCache.put(key, heightSample.water);
-                    PersistentChunkStore.put(key, pixels, heightSample.heights, heightSample.water);
-                });
-                refreshedAny = true;
+            boolean refreshedAny = false;
+            for (int dz = -radius; dz <= radius; dz++) {
+                for (int dx = -radius; dx <= radius; dx++) {
+                    int chunkX = centerX + dx;
+                    int chunkZ = centerZ + dz;
+                    // hasChunk is a cheap "is this already loaded" check — never forces a chunk
+                    // in, matching the read-only, best-effort spirit of this pass.
+                    if (!level.hasChunk(chunkX, chunkZ)) continue;
+
+                    ChunkKey key = ChunkKey.of(level, new ChunkPos(chunkX, chunkZ));
+                    SolarisProfiler.time("chunkSample", () -> {
+                        int[] pixels = ChunkColorSampler.sample(level, key.toChunkPos());
+                        ChunkColorSampler.HeightSample heightSample = ChunkColorSampler.sampleHeights(level,
+                                key.toChunkPos());
+                        ChunkColorCache.put(key, pixels);
+                        ChunkHeightCache.put(key, heightSample.heights);
+                        ChunkWaterCache.put(key, heightSample.water);
+                        ChunkRailCache.put(key, heightSample.rails);
+                        PersistentChunkStore.put(key, pixels, heightSample.heights, heightSample.water);
+                    });
+                    refreshedAny = true;
+                }
             }
-        }
-        SolarisProfiler.end("liveRefreshSweep", sweepStart);
+            SolarisProfiler.end("liveRefreshSweep", sweepStart);
 
-        if (refreshedAny) SolarisTexture.invalidateAll();
+            if (refreshedAny) SolarisTexture.invalidateAll();
+        }
+
         PersistentChunkStore.saveDirtyAsync();
     }
 }
