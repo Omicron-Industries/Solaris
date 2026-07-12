@@ -7,12 +7,13 @@ import net.minecraft.resources.ResourceLocation;
 import com.mojang.math.Axis;
 
 /**
- * A player marker: a small colored ring with the player's actual face inside it (like
- * JourneyMap — lets you tell players apart on the map at a glance instead of everyone being
- * the same anonymous dot/arrow), plus a rotating chevron attached to the ring's edge to show
- * facing direction. The face itself never rotates — only the chevron spins with yaw — since a
- * spinning face is harder to recognize than an upright one, matching how JourneyMap and most
- * minimap mods do it.
+ * A player marker: a square badge with the player's actual face inside it (like JourneyMap —
+ * lets you tell players apart on the map at a glance instead of everyone being the same
+ * anonymous dot/arrow) and a thin circle inscribed inside the square, tangent to the middle of
+ * each side, plus a rotating chevron to show facing direction. The face itself never rotates —
+ * only the chevron spins with yaw — since a spinning face is harder to recognize than an
+ * upright one, matching how JourneyMap and most minimap mods do it. Flat colors throughout, no
+ * black outline/border on any piece — square, circle, or chevron.
  *
  * Chevron rotation deliberately mirrors vanilla's own map player-icon rendering exactly —
  * verified against decompiled {@code MapRenderer.MapInstance.draw}, which rotates the icon
@@ -35,7 +36,7 @@ public final class PlayerArrow {
 
     /**
      * Draws the marker centered on ({@code cx}, {@code cy}); {@code skin} may be {@code null} to fall back to a flat
-     * circle.
+     * square.
      */
     public static void draw(GuiGraphics g, int cx, int cy, int radius, float yawDegrees, int color,
                             ResourceLocation skin) {
@@ -49,21 +50,34 @@ public final class PlayerArrow {
         drawFace(g, cx, cy, radius, color, skin);
     }
 
-    /** A short triangular nub attached to the south edge of the ring, tip pointing away from center. */
+    /**
+     * A narrow triangular needle whose base sits INSIDE the face square (the face is drawn
+     * afterward, on top, so that part is simply covered) with only the tip poking out past the
+     * edge — like a compass needle through a badge, rather than a wide flag glued to the
+     * outside of it.
+     *
+     * Floors (not just multiples of {@code r}) on both dimensions — at small marker sizes
+     * (fully zoomed out on the map, or the minimap's fixed small radius), scaling purely off
+     * {@code r} shrank the needle down to 1-2px, unreadable against busy terrain.
+     */
     private static void drawChevronSouth(GuiGraphics g, int cx, int cy, int r, int color) {
-        int len = Math.max(3, r);
-        int halfW = Math.max(2, r / 2 + 1);
-        int baseY = cy + r - 1;
-        SmoothShapes.drawTriangleSouth(g, cx, baseY - 1, halfW + 1, len + 2, 0xFF000000);
+        int halfW = Math.max(3, Math.round(r * 0.7f));
+        int len = Math.max(7, Math.round(r * 2.0f));
+        int baseY = cy + Math.round(r * 0.4f);
         SmoothShapes.drawTriangleSouth(g, cx, baseY, halfW, len, color);
     }
 
+    /**
+     * A square badge (side length {@code 2r}) with the face texture filling it and a thin
+     * circle inscribed inside — tangent to the midpoint of each side, i.e. ring radius equal to
+     * the square's half-side ({@code r}) — drawn on top of the face as a decorative accent.
+     */
     private static void drawFace(GuiGraphics g, int cx, int cy, int r, int color, ResourceLocation skin) {
-        SmoothShapes.drawCircle(g, cx, cy, r + 1, 0xFF000000);
-        SmoothShapes.drawCircle(g, cx, cy, r, color);
+        g.fill(cx - r, cy - r, cx + r, cy + r, color);
         if (skin != null) {
-            int size = Math.max(6, r * 2 - 1);
+            int size = r * 2;
             PlayerFaceRenderer.draw(g, skin, cx - size / 2, cy - size / 2, size);
         }
+        SmoothShapes.drawRing(g, cx, cy, r, color);
     }
 }

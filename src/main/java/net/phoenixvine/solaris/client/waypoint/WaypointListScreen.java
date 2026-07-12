@@ -43,6 +43,7 @@ public class WaypointListScreen extends Screen {
     /** {@code null} means "all categories" — not one of {@link WaypointManager#getCategories()}. */
     private String categoryFilter = null;
     private EditBox categoryBox;
+    private EditBox labelColorBox;
 
     public WaypointListScreen(Screen parent) {
         super(Component.literal("Waypoints"));
@@ -128,6 +129,13 @@ public class WaypointListScreen extends Screen {
             categoryBox.setValue(selected.categoryOrEmpty());
             categoryBox.setHint(Component.literal("Uncategorized"));
             addWidget(categoryBox);
+            y += ROW_H + 10;
+
+            labelColorBox = new EditBox(font, editX, y, sideW - 20, 16, Component.literal("Label Color"));
+            labelColorBox.setMaxLength(8);
+            labelColorBox.setValue(selected.labelColor);
+            labelColorBox.setHint(Component.literal("Same as theme text"));
+            addWidget(labelColorBox);
             y += ROW_H + 14;
 
             addRenderableWidget(Button.builder(
@@ -199,6 +207,7 @@ public class WaypointListScreen extends Screen {
         selected.name = nameBox.getValue().isBlank() ? selected.name : nameBox.getValue();
         selected.color = colorBox.getValue();
         selected.category = categoryBox != null ? categoryBox.getValue().trim() : selected.category;
+        selected.labelColor = labelColorBox != null ? labelColorBox.getValue().trim() : selected.labelColor;
         selected.x = parseCoord(xBox, selected.x);
         selected.y = parseCoord(yBox, selected.y);
         selected.z = parseCoord(zBox, selected.z);
@@ -305,12 +314,14 @@ public class WaypointListScreen extends Screen {
             g.drawString(font, "Color (hex)", editX, 30 + ROW_H + 10, C_DIM, false);
             g.drawString(font, "X / Y / Z", editX, 30 + 2 * (ROW_H + 10), C_DIM, false);
             g.drawString(font, "Category", editX, 30 + 3 * (ROW_H + 10), C_DIM, false);
+            g.drawString(font, "Label Color (hex)", editX, 30 + 4 * (ROW_H + 10), C_DIM, false);
             if (nameBox != null) nameBox.render(g, mx, my, pt);
             if (colorBox != null) colorBox.render(g, mx, my, pt);
             if (xBox != null) xBox.render(g, mx, my, pt);
             if (yBox != null) yBox.render(g, mx, my, pt);
             if (zBox != null) zBox.render(g, mx, my, pt);
             if (categoryBox != null) categoryBox.render(g, mx, my, pt);
+            if (labelColorBox != null) labelColorBox.render(g, mx, my, pt);
         }
 
         g.fill(width - sideW, 28, width - sideW + 1, height, C_BORDER);

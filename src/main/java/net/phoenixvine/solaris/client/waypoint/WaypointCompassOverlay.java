@@ -31,7 +31,9 @@ public class WaypointCompassOverlay {
         if (!SolarisConfig.WAYPOINT_COMPASS.get()) return;
 
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.level == null || mc.options.hideGui) return;
+        // Forge still fires hotbar-overlay events while a Screen is open — without this check
+        // this HUD compass rendered behind/through Solaris's own screens too.
+        if (mc.player == null || mc.level == null || mc.options.hideGui || mc.screen != null) return;
 
         Waypoint target = WaypointManager.getTracked();
         if (target == null || !target.dimension.equals(mc.level.dimension().location().toString())) {

@@ -32,9 +32,11 @@ public final class SmoothShapes {
 
     private static final float TRI_HALF_BASE_PX = 15f;
     private static final float TRI_HEIGHT_PX = 30f;
+    private static final float RING_STROKE_PX = 2.5f;
 
     private static ResourceLocation circleTex;
     private static ResourceLocation triangleTex;
+    private static ResourceLocation ringTex;
 
     private SmoothShapes() {}
 
@@ -43,6 +45,16 @@ public final class SmoothShapes {
         ensureLoaded();
         int size = Math.round(radius * CIRCLE_SCALE);
         blitTinted(g, circleTex, cx - size / 2, cy - size / 2, size, size, argb);
+    }
+
+    /**
+     * Draws a stroke-only circle outline (an annulus, not a filled disc) — safe to layer over
+     * other content underneath, since everything away from the ring itself has zero coverage.
+     */
+    public static void drawRing(GuiGraphics g, int cx, int cy, int radius, int argb) {
+        ensureLoaded();
+        int size = Math.round(radius * CIRCLE_SCALE);
+        blitTinted(g, ringTex, cx - size / 2, cy - size / 2, size, size, argb);
     }
 
     /**
@@ -99,6 +111,7 @@ public final class SmoothShapes {
         if (circleTex != null) return;
         circleTex = register("smooth_circle", bakeCircle());
         triangleTex = register("smooth_triangle", bakeTriangle());
+        ringTex = register("smooth_ring", bakeRing());
     }
 
     private static ResourceLocation register(String name, NativeImage image) {
@@ -119,6 +132,23 @@ public final class SmoothShapes {
                 float dy = y + 0.5f - cy;
                 float dist = (float) Math.sqrt(dx * dx + dy * dy);
                 float coverage = clamp01(CIRCLE_RADIUS_PX - dist + 0.5f);
+                image.setPixelRGBA(x, y, packWhite(coverage));
+            }
+        }
+        return image;
+    }
+
+    private static NativeImage bakeRing() {
+        NativeImage image = new NativeImage(TEX_SIZE, TEX_SIZE, false);
+        float cx = TEX_SIZE / 2f;
+        float cy = TEX_SIZE / 2f;
+        float strokeHalf = RING_STROKE_PX / 2f;
+        for (int y = 0; y < TEX_SIZE; y++) {
+            for (int x = 0; x < TEX_SIZE; x++) {
+                float dx = x + 0.5f - cx;
+                float dy = y + 0.5f - cy;
+                float dist = (float) Math.sqrt(dx * dx + dy * dy);
+                float coverage = clamp01(strokeHalf - Math.abs(dist - CIRCLE_RADIUS_PX) + 0.5f);
                 image.setPixelRGBA(x, y, packWhite(coverage));
             }
         }

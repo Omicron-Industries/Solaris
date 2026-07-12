@@ -6,6 +6,7 @@ import net.minecraftforge.event.level.ChunkEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.phoenixvine.solaris.PhoenixSolaris;
+import net.phoenixvine.solaris.client.perf.SolarisProfiler;
 
 @Mod.EventBusSubscriber(modid = PhoenixSolaris.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public class ChunkColorEvents {
@@ -17,7 +18,7 @@ public class ChunkColorEvents {
 
         var pos = event.getChunk().getPos();
         ChunkKey key = ChunkKey.of(level, pos);
-        ChunkColorCache.put(key, ChunkColorSampler.sample(level, pos));
+        SolarisProfiler.time("chunkSample", () -> resample(level, key, pos));
 
         // If the chunk to the south was already sampled before this one loaded, its north edge
         // (row lz=0) fell back to flat shading — see ChunkColorSampler's class doc — since it
@@ -28,7 +29,16 @@ public class ChunkColorEvents {
         // south chunk gets a second, correct sample as soon as this one becomes available.
         ChunkKey southKey = new ChunkKey(key.dimension(), key.x(), key.z() + 1);
         if (ChunkColorCache.contains(southKey)) {
-            ChunkColorCache.put(southKey, ChunkColorSampler.sample(level, southKey.toChunkPos()));
+            SolarisProfiler.time("chunkSample", () -> resample(level, southKey, southKey.toChunkPos()));
         }
+    }
+
+    private static void resample(Level level, ChunkKey key, net.minecraft.world.level.ChunkPos pos) {
+        int[] pixels = ChunkColorSampler.sample(level, pos);
+        ChunkColorSampler.HeightSample heightSample = ChunkColorSampler.sampleHeights(level, pos);
+        ChunkColorCache.put(key, pixels);
+        ChunkHeightCache.put(key, heightSample.heights);
+        ChunkWaterCache.put(key, heightSample.water);
+        PersistentChunkStore.put(key, pixels, heightSample.heights, heightSample.water);
     }
 }

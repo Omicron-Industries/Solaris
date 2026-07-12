@@ -38,7 +38,7 @@ import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_PANEL;
 public class QuickWaypointScreen extends Screen {
 
     private static final int BOX_W = 216;
-    private static final int BOX_H = 236;
+    private static final int BOX_H = 262;
 
     private static final String[] SWATCHES = {
             "FFFFFFFF", "FFFF5555", "FFFFAA00", "FFFFFF55", "FF55FF55", "FF55FFFF", "FF5599FF", "FFFF55FF"
@@ -56,6 +56,7 @@ public class QuickWaypointScreen extends Screen {
     private EditBox yBox;
     private EditBox zBox;
     private EditBox colorBox;
+    private EditBox labelColorBox;
     private String icon = WaypointIcon.DOT.name();
     private boolean visible = true;
 
@@ -121,15 +122,20 @@ public class QuickWaypointScreen extends Screen {
         colorBox.setValue(SWATCHES[0]);
         addWidget(colorBox);
 
+        labelColorBox = new EditBox(font, x + 10, y + 134, BOX_W - 20, 16, Component.literal("Label Color"));
+        labelColorBox.setMaxLength(8);
+        labelColorBox.setHint(Component.literal("Same as theme text"));
+        addWidget(labelColorBox);
+
         addRenderableWidget(Button.builder(Component.literal("Icon: " + WaypointIconManager.label(icon)),
                 b -> Minecraft.getInstance().setScreen(new WaypointIconPickerScreen(this, icon, colorArgb(), id -> {
                     icon = id;
-                }))).bounds(x + 10, y + 134, BOX_W - 20, 18).build());
+                }))).bounds(x + 10, y + 160, BOX_W - 20, 18).build());
 
         addRenderableWidget(Button.builder(Component.literal(visible ? "Visible: ON" : "Visible: OFF"), b -> {
             visible = !visible;
             b.setMessage(Component.literal(visible ? "Visible: ON" : "Visible: OFF"));
-        }).bounds(x + 10, y + 156, BOX_W - 20, 18).build());
+        }).bounds(x + 10, y + 182, BOX_W - 20, 18).build());
 
         addRenderableWidget(Button.builder(Component.literal("Save"), b -> save())
                 .bounds(x + 10, y + BOX_H - 22, (BOX_W - 24) / 2, 18).build());
@@ -168,6 +174,7 @@ public class QuickWaypointScreen extends Screen {
         Waypoint w = new Waypoint(name, dimension, wx, wy, wz, color);
         w.icon = icon;
         w.visible = visible;
+        w.labelColor = labelColorBox.getValue().trim();
         WaypointManager.add(w);
         onClose();
     }
@@ -189,6 +196,7 @@ public class QuickWaypointScreen extends Screen {
         g.drawString(font, "Name", x + 10, y + 15, C_DIM, false);
         g.drawString(font, "X / Y / Z  (" + dimension.getPath() + ")", x + 10, y + 41, C_DIM, false);
         g.drawString(font, "Color (hex)", x + 10, y + 83, C_DIM, false);
+        g.drawString(font, "Label Color (hex)", x + 10, y + 125, C_DIM, false);
 
         List<String> swatches = List.of(SWATCHES);
         int sy = swatchY();
@@ -205,6 +213,7 @@ public class QuickWaypointScreen extends Screen {
         if (yBox != null) yBox.render(g, mx, my, pt);
         if (zBox != null) zBox.render(g, mx, my, pt);
         if (colorBox != null) colorBox.render(g, mx, my, pt);
+        if (labelColorBox != null) labelColorBox.render(g, mx, my, pt);
 
         super.render(g, mx, my, pt);
     }

@@ -45,7 +45,11 @@ public class MinimapHudOverlay {
         if (event.getOverlay() != VanillaGuiOverlay.HOTBAR.type()) return;
 
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.level == null || mc.options.hideGui) return;
+        // Forge still fires hotbar-overlay events while a Screen is open (vanilla itself keeps
+        // rendering the HUD underneath most menus) — without this check the minimap rendered
+        // behind/through every Solaris screen, most visibly the fullscreen map itself, where a
+        // second, redundant map peeking out from a corner made no sense.
+        if (mc.player == null || mc.level == null || mc.options.hideGui || mc.screen != null) return;
 
         SolarisTexture tex = texture();
         int screenSize = SolarisConfig.MINIMAP_SIZE.get();
@@ -91,6 +95,6 @@ public class MinimapHudOverlay {
 
         int cx = x + screenSize / 2;
         int cy = y + screenSize / 2;
-        PlayerArrow.draw(g, cx, cy, 4, mc.player.getYRot(), C_ACCENT, mc.player.getSkinTextureLocation());
+        PlayerArrow.draw(g, cx, cy, 6, mc.player.getYRot(), C_ACCENT, mc.player.getSkinTextureLocation());
     }
 }

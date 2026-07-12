@@ -3,13 +3,18 @@ package net.phoenixvine.solaris.client.color;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.tags.BiomeTags;
+import net.minecraft.util.Mth;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.material.MapColor;
 import net.phoenixvine.solaris.config.SolarisConfig;
+
+import java.util.Set;
 
 /**
  * Samples one chunk's surface terrain into a flat 16x16 (row-major, {@code z*16+x}) array
@@ -74,11 +79,31 @@ import net.phoenixvine.solaris.config.SolarisConfig;
  */
 public final class ChunkColorSampler {
 
-    /** How far straight down through a water column to hunt for the real floor block. */
-    private static final int MAX_WATER_SCAN = 40;
+    /**
+     * How far straight down through a water column to hunt for the real floor block. Was 40 —
+     * too shallow for deep ocean specifically (its whole defining trait is greater depth, and
+     * underwater ravines/cave openings — far more common under deep ocean than shallow — can
+     * plunge well past that). Columns that hit this limit before finding real floor fell back to
+     * a flat, fixed "fake stone" color instead of the real (varied) seafloor, creating a
+     * patchwork of real-vs-fake floor color exactly where depth happened to cross this
+     * threshold — reported as chunk-grid-aligned lines, specific to deep ocean. Raised well past
+     * any realistic depth (nearly the full build-height range) rather than guessing at a new
+     * "safe" cutoff.
+     */
+    private static final int MAX_WATER_SCAN = 320;
 
-    private static final double RELIEF_LOW = 0.62;
-    private static final double RELIEF_HIGH = 1.3;
+    /**
+     * Widened to package-visible (from {@code private}) so {@code SolarisTexture} can
+     * approximately un-apply this same north-relative shading when building the globe's own
+     * texture variant — see {@code SolarisTexture.ensureGlobeTexture} for why the flat map's
+     * relief shading, correct for its fixed north-up view, reads backwards from most angles on
+     * a rotatable sphere.
+     */
+    public static final double RELIEF_LOW = 0.62;
+    public static final double RELIEF_HIGH = 1.3;
+    /** North-neighbor height-delta multiplier and threshold the relief factor above is picked from. */
+    public static final double RELIEF_NEIGHBOR_SCALE = 0.8;
+    public static final double RELIEF_THRESHOLD = 1.2;
 
     /**
      * Water always gets at least this much blue tint, even at the shallowest/most see-through settings —
@@ -99,6 +124,112 @@ public final class ChunkColorSampler {
 
     private ChunkColorSampler() {}
 
+    /**
+     * Kelp/seagrass sitting in water — {@code WORLD_SURFACE} returns the plant's own top block
+     * for these, not the water surface, so they need explicit exemption anywhere water itself is
+     * (relief shading, the {@link ChunkWaterCache} mask) since a plant's essentially-random
+     * per-column height isn't real terrain elevation.
+     */
+    private static boolean isAquaticPlant(BlockState state) {
+        return state.is(Blocks.KELP) || state.is(Blocks.KELP_PLANT) || state.is(Blocks.SEAGRASS) ||
+                state.is(Blocks.TALL_SEAGRASS);
+    }
+
+    /**
+     * Ice/iceberg material — frozen/deep frozen ocean generate actual icebergs that can jut
+     * 10+ blocks above sea level, scattered essentially at random per column. Those columns
+     * report {@code MapColor.ICE}, not water, so they take the ordinary relief-shaded terrain
+     * branch below, and iceberg height variance is dramatic enough to trip the single
+     * -north-neighbor relief threshold on nearly every column — a chunk-grid-aligned noise
+     * pattern confined to frozen ocean, the "still there" report after every water-specific fix
+     * (which none of these touch, since iceberg columns were never classified as water at all).
+     */
+    private static boolean isIce(BlockState state) {
+        return state.is(Blocks.ICE) || state.is(Blocks.PACKED_ICE) || state.is(Blocks.BLUE_ICE) ||
+                state.is(Blocks.FROSTED_ICE);
+    }
+
+    /**
+     * Every vanilla glass block/pane variant (verified against decompiled {@code Blocks.java}:
+     * plain glass and glass panes both default to {@code MapColor.NONE} by omission, same as
+     * rails/iron bars; tinted and stained glass/panes each set their own real {@code MapColor}).
+     * Handled uniformly here rather than through {@link BlockColorOverrides}/{@code MapColor} at
+     * all — glass is deliberately see-through in-world, so it gets the same "descend past it,
+     * then blend a light tint of its own color over the real block underneath" treatment as
+     * {@link #sampleWater}'s floor-peek, instead of either hiding completely (misleading — a
+     * whole greenhouse would just vanish) or painting as a flat opaque tile (misleading the other
+     * way — reads as a solid wall on the map).
+     */
+    private static final Set<Block> GLASS_BLOCKS = Set.of(Blocks.GLASS, Blocks.GLASS_PANE, Blocks.TINTED_GLASS,
+            Blocks.WHITE_STAINED_GLASS, Blocks.ORANGE_STAINED_GLASS, Blocks.MAGENTA_STAINED_GLASS,
+            Blocks.LIGHT_BLUE_STAINED_GLASS, Blocks.YELLOW_STAINED_GLASS, Blocks.LIME_STAINED_GLASS,
+            Blocks.PINK_STAINED_GLASS, Blocks.GRAY_STAINED_GLASS, Blocks.LIGHT_GRAY_STAINED_GLASS,
+            Blocks.CYAN_STAINED_GLASS, Blocks.PURPLE_STAINED_GLASS, Blocks.BLUE_STAINED_GLASS,
+            Blocks.BROWN_STAINED_GLASS, Blocks.GREEN_STAINED_GLASS, Blocks.RED_STAINED_GLASS,
+            Blocks.BLACK_STAINED_GLASS, Blocks.WHITE_STAINED_GLASS_PANE, Blocks.ORANGE_STAINED_GLASS_PANE,
+            Blocks.MAGENTA_STAINED_GLASS_PANE, Blocks.LIGHT_BLUE_STAINED_GLASS_PANE,
+            Blocks.YELLOW_STAINED_GLASS_PANE, Blocks.LIME_STAINED_GLASS_PANE, Blocks.PINK_STAINED_GLASS_PANE,
+            Blocks.GRAY_STAINED_GLASS_PANE, Blocks.LIGHT_GRAY_STAINED_GLASS_PANE, Blocks.CYAN_STAINED_GLASS_PANE,
+            Blocks.PURPLE_STAINED_GLASS_PANE, Blocks.BLUE_STAINED_GLASS_PANE, Blocks.BROWN_STAINED_GLASS_PANE,
+            Blocks.GREEN_STAINED_GLASS_PANE, Blocks.RED_STAINED_GLASS_PANE, Blocks.BLACK_STAINED_GLASS_PANE);
+
+    private static boolean isGlass(BlockState state) {
+        return GLASS_BLOCKS.contains(state.getBlock());
+    }
+
+    /**
+     * How strongly a glass tint reads over whatever's beneath it — enough to see color, not enough to hide the floor.
+     */
+    private static final double GLASS_TINT_STRENGTH = 0.3;
+
+    /**
+     * Plain/undyed glass's tint color — used for {@link Blocks#GLASS}/{@link Blocks#GLASS_PANE},
+     * which have no {@code MapColor} of their own (see {@link #glassTintPixel}) and, being
+     * connected/multipart-shaped models, aren't a safe {@link BlockTextureColors} read either.
+     * Already ABGR-packed (see the class doc on {@code calculateRGBColor}'s layout), matching
+     * every other value {@link #glassTintPixel} can return.
+     */
+    private static final int PLAIN_GLASS_TINT_ABGR = packAbgr(0xC8E8F0, 255);
+
+    /**
+     * Returns the already-ABGR-packed tint color for {@code state} if it's a glass block, else
+     * {@code null}. Deliberately does <b>not</b> go through {@link BlockTextureColors}: glass
+     * panes (colored or plain) are built from a "multipart" blockstate — verified against the
+     * decompiled model JSON, each connection direction is its own conditional sub-model — and a
+     * baked model composed that way doesn't reliably resolve a real representative particle-icon
+     * sprite the way a plain single-texture block does, silently landing on
+     * {@code BlockTextureColors}'s missing-texture fallback (flat gray) instead of the pane's
+     * actual color. Stained/tinted glass already has a real, dye-accurate {@code MapColor} set
+     * directly in {@code Blocks.java} ({@code stainedGlass(color)} calls {@code .mapColor(color)}
+     * itself) — reusing that sidesteps the unreliable texture read entirely, and is arguably a
+     * *better* source than a texture average anyway, since stained glass textures bake in bright
+     * highlight/streak pixels that would otherwise wash a naive average out lighter than the
+     * block's true, saturated color.
+     */
+    private static Integer glassTintPixel(BlockState state, MapColor mapColor) {
+        if (!isGlass(state)) return null;
+        if (mapColor != MapColor.NONE) {
+            return mapColor.calculateRGBColor(MapColor.Brightness.NORMAL);
+        }
+        return PLAIN_GLASS_TINT_ABGR;
+    }
+
+    /**
+     * Smoothly ramps from {@link #RELIEF_LOW} (at {@code delta <= -RELIEF_THRESHOLD}) through
+     * 1.0 (flat, {@code delta == 0}) to {@link #RELIEF_HIGH} (at {@code delta >= RELIEF_THRESHOLD})
+     * — a continuous function of the north-neighbor height delta, replacing what used to be a
+     * hard 3-value step with nothing in between. That discontinuity, not any water/ice/biome
+     * data issue, was the actual source of this map's recurring "line"/"checkerboard" reports:
+     * any two adjacent columns straddling the old threshold got a sudden brightness jump against
+     * each other, on every kind of terrain and content alike. Public so {@code SolarisTexture}'s
+     * globe de-relief pass can recompute this exact same curve rather than duplicating (and now
+     * risking drifting out of sync with) the formula.
+     */
+    public static double relief(double delta) {
+        double t = Mth.clamp(delta / RELIEF_THRESHOLD, -1.0, 1.0);
+        return t >= 0 ? Mth.lerp(t, 1.0, RELIEF_HIGH) : Mth.lerp(-t, 1.0, RELIEF_LOW);
+    }
+
     public static int[] sample(Level level, ChunkPos pos) {
         int[] pixels = new int[256];
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
@@ -112,18 +243,41 @@ public final class ChunkColorSampler {
 
                 BlockState state = level.getBlockState(cursor);
                 MapColor mapColor = state.getMapColor(level, cursor);
+                // Topmost glass layer's own tint, captured on the way down — see
+                // glassTintPixel's doc. Only the first one found (nearest the surface) counts, so
+                // stacked panes don't compound into an ever-thicker tint. Already ABGR-packed.
+                Integer glassTintAbgr = glassTintPixel(state, mapColor);
 
                 // Skip blocks with no real map color (signs, torches, flower pots, carpets,
                 // etc.) — mirrors vanilla's own do-while descent in MapItem.update, so a pixel
                 // shows whatever's actually beneath a colorless decoration instead of reading
                 // as "unexplored" (MapColor.NONE's calculateRGBColor returns 0, which
-                // SolarisTexture treats as no-data and paints as fog).
+                // SolarisTexture treats as no-data and paints as fog). Also descends past
+                // BlockColorOverrides.isTransparent blocks (short/tall grass) and all glass
+                // variants (see isGlass) the same way, so clutter — or a window — on top of real
+                // terrain doesn't hide it.
+                //
+                // Crucially, a block with a BlockColorOverrides entry is NEVER descended past,
+                // even if its own vanilla MapColor is NONE — a huge number of blocks (rails,
+                // fences, doors, most redstone components, iron bars, banners...) default to
+                // MapColor.NONE simply because nobody at Mojang ever bothered to set one, not
+                // because they're meant to be invisible on a map. Checking the override FIRST is
+                // what actually lets those show up at all; an override map entry alone (without
+                // this check) would silently never be reached, since the loop below would already
+                // have walked straight past the block before anything downstream ever looked at
+                // what it was. Glass is deliberately exempt from that override-wins rule (see
+                // isGlass) — it's always descended past regardless, since it's never meant to be
+                // an opaque final color, just a tint layered on afterward.
                 int minY = level.getMinBuildHeight() + 1;
-                while (mapColor == MapColor.NONE && surfaceY > minY) {
+                while (surfaceY > minY && (BlockColorOverrides.isTransparent(state.getBlock()) || isGlass(state) ||
+                        (mapColor == MapColor.NONE && BlockColorOverrides.get(state.getBlock()) == null))) {
                     surfaceY--;
                     cursor.set(worldX, surfaceY, worldZ);
                     state = level.getBlockState(cursor);
                     mapColor = state.getMapColor(level, cursor);
+                    if (glassTintAbgr == null) {
+                        glassTintAbgr = glassTintPixel(state, mapColor);
+                    }
                 }
 
                 Holder<Biome> biomeHolder = level.getBiome(cursor);
@@ -131,22 +285,55 @@ public final class ChunkColorSampler {
 
                 // Guard against the chunk to the north not being loaded yet — see the class doc
                 // above on why an unguarded lookup there is what actually caused the streaks.
+                // Also skip entirely for kelp/seagrass — WORLD_SURFACE returns the plant's own
+                // top block for a column where it reaches the water surface (MapColor.PLANT, not
+                // WATER), so it takes the relief-shaded PLANT branch below unless excluded here;
+                // kelp height is essentially random per-column (1-25 blocks), which the relief
+                // comparison misreads as real terrain elevation, producing a noisy, chunk-edge
+                // -aligned pattern across any water with a kelp/seagrass forest in it. Ice/iceberg
+                // gets the same exemption for the same reason — see isIce's doc.
+                //
+                // reliefFactor itself is a smooth, continuous ramp from RELIEF_LOW through 1.0 to
+                // RELIEF_HIGH (see relief() below) — it used to be a hard 3-value step (exactly
+                // RELIEF_LOW, 1.0, or RELIEF_HIGH, nothing between), which meant ANY column whose
+                // north-neighbor height delta crossed the threshold got a sudden, discontinuous
+                // brightness jump against its immediate neighbor. That's what actually produced
+                // every "line"/"checkerboard" report across this whole investigation — not
+                // water, not ice, not biome data, but this discontinuity applied indiscriminately
+                // to every pixel (a player-built structure showed it too, with zero data noise
+                // involved, which is what finally pinned it down). Darker/blue tones show a
+                // brightness-multiplier's effect more visibly than lighter ones, which is why
+                // water/ice were the most-reported cases, but the mechanism was never specific to
+                // them.
                 double reliefFactor = 1.0;
-                if (level.hasChunk(worldX >> 4, (worldZ - 1) >> 4)) {
+                if (!isAquaticPlant(state) && !isIce(state) && level.hasChunk(worldX >> 4, (worldZ - 1) >> 4)) {
                     int northY = level.getHeight(Heightmap.Types.WORLD_SURFACE, worldX, worldZ - 1) - 1;
-                    double relief = (surfaceY - northY) * 0.8;
-                    // Threshold raised somewhat from vanilla's 0.6 — at true 1:1 scale (no
-                    // zoomed-out averaging like the in-game map has) a single-block bump too
-                    // small to notice on foot could otherwise cross it. Not pushed further than
-                    // this, though: the real source of the persistent line artifacts was the
-                    // permanent chunk-load-order fallback above, now fixed at the source in
-                    // ChunkColorEvents, so this only needs to filter genuine single-block noise.
-                    if (relief > 1.2) reliefFactor = RELIEF_HIGH;
-                    else if (relief < -1.2) reliefFactor = RELIEF_LOW;
+                    reliefFactor = relief((surfaceY - northY) * RELIEF_NEIGHBOR_SCALE);
                 }
 
                 int finalPixel;
-                if (mapColor == MapColor.WATER) {
+                Integer override = BlockColorOverrides.get(state.getBlock());
+                if (override != null) {
+                    // A curated, final color — not run through vanilla's MapColor branches (no
+                    // biome tint to apply, it's not a biome-dependent color), but still relief
+                    // -shaded like everything else so overridden blocks aren't visually flat
+                    // against shaded terrain around them.
+                    finalPixel = scaleBrightness(packAbgr(override, 255), reliefFactor);
+                } else if (mapColor == MapColor.WATER || state.is(Blocks.ICE)) {
+                    // Plain surface ICE — specifically not PACKED_ICE/BLUE_ICE, which stay their
+                    // own distinct MapColor.ICE below since those are deliberately-placed
+                    // iceberg material worth standing out — is worldgen's own "freeze_top_layer"
+                    // feature (verified in cold_ocean.json/frozen_ocean.json/etc.) converting
+                    // scattered individual surface-water columns to ice, patchily, within
+                    // cold-temperature ocean biomes specifically. Every one of those columns
+                    // previously fell through to the generic branch below and got MapColor.ICE's
+                    // flat pale color — a stark jump from adjacent open water's much darker,
+                    // floor-blended tint — which is what actually produced the persistent
+                    // "checkerboard" reported in cold/frozen/deep-cold ocean and nowhere else
+                    // (freeze_top_layer isn't present in warm/lukewarm/regular ocean at all).
+                    // Routing it through the same sampleWater() blend as real water instead
+                    // makes frozen-over columns read as a shade of water, not a different
+                    // material entirely.
                     finalPixel = sampleWater(level, cursor, worldX, worldZ, surfaceY, biome,
                             biomeHolder.is(BiomeTags.IS_OCEAN));
                 } else if (mapColor == MapColor.GRASS) {
@@ -154,8 +341,19 @@ public final class ChunkColorSampler {
                 } else if (mapColor == MapColor.PLANT) {
                     finalPixel = scaleBrightness(packAbgr(biome.getFoliageColor(), 255), reliefFactor);
                 } else {
-                    // Already NativeImage-ready — see the class doc on calculateRGBColor above.
-                    finalPixel = scaleBrightness(mapColor.calculateRGBColor(MapColor.Brightness.NORMAL), reliefFactor);
+                    // Solaris's own color source in place of vanilla's MapColor bucket — see
+                    // BlockTextureColors's class doc. BlockColorOverrides (checked first, above)
+                    // still wins for the handful of blocks a flat curated color reads better on
+                    // than a texture average (flowers-as-dye-color, most obviously).
+                    finalPixel = scaleBrightness(packAbgr(BlockTextureColors.get(state), 255), reliefFactor);
+                }
+
+                if (glassTintAbgr != null) {
+                    // Applied after relief shading, not scaled by it — same treatment
+                    // sampleWater's own tint gets over its floor color, for the same reason: this
+                    // is a translucent layer sitting on top of the real surface, not part of the
+                    // surface's own relief.
+                    finalPixel = blendAbgr(finalPixel, glassTintAbgr, GLASS_TINT_STRENGTH);
                 }
 
                 pixels[lz * 16 + lx] = finalPixel;
@@ -163,6 +361,69 @@ public final class ChunkColorSampler {
         }
 
         return pixels;
+    }
+
+    /** Paired output of {@link #sampleHeights} — height plus whether that column's surface is water. */
+    public static final class HeightSample {
+
+        public final int[] heights;
+        public final boolean[] water;
+
+        private HeightSample(int[] heights, boolean[] water) {
+            this.heights = heights;
+            this.water = water;
+        }
+    }
+
+    /**
+     * A separate, much cheaper pass — just the raw {@code WORLD_SURFACE} height (and whether
+     * that surface is water) per column, no biome/relief work — for {@code
+     * SolarisGlobeRenderer}'s terrain-relief displacement and {@code SolarisTexture}'s globe
+     * de-relief pass. Kept independent of {@link #sample} rather than folded into its return
+     * value so that method's carefully-tuned pixel logic didn't need touching to add this.
+     *
+     * The water flag matters: unlike every other surface type, water pixels never had relief
+     * shading applied to their color in {@link #sample} in the first place (see the {@code
+     * MapColor.WATER} branch there, which calls {@link #sampleWater} directly, bypassing {@code
+     * scaleBrightness} entirely) — water's own surface height is otherwise almost always dead
+     * flat at sea level anyway, except for tiny noise from kelp/seagrass poking above it, which
+     * a relief-based effect misreads as terrain bumps if not excluded.
+     */
+    public static HeightSample sampleHeights(Level level, ChunkPos pos) {
+        int[] heights = new int[256];
+        boolean[] water = new boolean[256];
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+
+        for (int lz = 0; lz < 16; lz++) {
+            for (int lx = 0; lx < 16; lx++) {
+                int worldX = pos.getMinBlockX() + lx;
+                int worldZ = pos.getMinBlockZ() + lz;
+                int surfaceY = level.getHeight(Heightmap.Types.WORLD_SURFACE, worldX, worldZ) - 1;
+                cursor.set(worldX, surfaceY, worldZ);
+                BlockState state = level.getBlockState(cursor);
+
+                // Same descend-past-clutter behavior as sample()'s color pass (including the
+                // override-takes-priority check and the glass exemption — see the comments
+                // there), so relief/globe displacement reads the real ground height rather than a
+                // grass blade's, or a greenhouse roof's.
+                int minY = level.getMinBuildHeight() + 1;
+                while (surfaceY > minY && (BlockColorOverrides.isTransparent(state.getBlock()) || isGlass(state) ||
+                        (state.getMapColor(level, cursor) == MapColor.NONE &&
+                                BlockColorOverrides.get(state.getBlock()) == null))) {
+                    surfaceY--;
+                    cursor.set(worldX, surfaceY, worldZ);
+                    state = level.getBlockState(cursor);
+                }
+
+                heights[lz * 16 + lx] = surfaceY;
+                // Named for its original, dominant case (water), but really means "exempt from
+                // SolarisTexture's globe de-relief recompute" — ice/iceberg needs the exact same
+                // exemption there as it does in sample()'s own relief calc, for the same reason.
+                water[lz * 16 + lx] = state.getMapColor(level, cursor) == MapColor.WATER || isAquaticPlant(state) ||
+                        isIce(state);
+            }
+        }
+        return new HeightSample(heights, water);
     }
 
     /**
@@ -204,7 +465,7 @@ public final class ChunkColorSampler {
 
         int floorPixel = floorColor == MapColor.NONE ? MapColor.STONE.calculateRGBColor(MapColor.Brightness.LOW) :
                 floorColor.calculateRGBColor(MapColor.Brightness.NORMAL);
-        int tintPixel = packAbgr(biome.getWaterColor(), 255);
+        int tintPixel = packAbgr(blendedWaterColor(level, worldX, worldZ, surfaceY, biome), 255);
 
         double tintStrength;
         if (!isOcean) {
@@ -229,6 +490,60 @@ public final class ChunkColorSampler {
         }
 
         return blendAbgr(floorPixel, tintPixel, tintStrength);
+    }
+
+    /**
+     * Step (blocks) between sampled neighbor points for {@link #blendedWaterColor} — the grid spacing itself isn't
+     * user-tunable, only its extent.
+     */
+    private static final int WATER_BLEND_STEP = 4;
+
+    /**
+     * Averages {@code Biome#getWaterColor()} over a grid of sample points (this pixel plus
+     * neighbors out to {@link SolarisConfig#WATER_BLEND_RADIUS} blocks, at {@link
+     * #WATER_BLEND_STEP} spacing — the default 8 gives the original 5x5/24-neighbor grid) instead
+     * of reading it raw at a single point. Every other color source on this map already goes
+     * through some smoothing — grass/foliage get the same treatment vanilla's own map does
+     * implicitly via biome noise being fairly gradual there, land relief is an explicit
+     * north-neighbor comparison — but a raw, single-point biome lookup for water tint left hard,
+     * distinctly grid-aligned lighter/darker seams wherever two ocean sub-biomes (regular/warm/
+     * lukewarm/cold/frozen, plus their deep variants) meet, reported as "fine lines of lighter
+     * blue around every chunk". Blending smooths exactly that, the same way vanilla's own
+     * {@code BiomeColors} resolvers blend grass/foliage/water color over a neighborhood rather
+     * than reading one biome's raw value.
+     *
+     * User-tunable (radius 0-16, snapped to a multiple of {@link #WATER_BLEND_STEP}) rather than
+     * fixed, since a follow-up report was the opposite of "still not enough blending" — some
+     * players specifically like the sharper, more grid-visible look blending was built to smooth
+     * away. Radius 0 skips the neighbor loop entirely and returns the biome's own raw color,
+     * exactly matching pre-blending behavior. Default (8) is unchanged from before this became
+     * configurable, so nobody's map changes appearance without them touching the setting.
+     */
+    private static int blendedWaterColor(Level level, int worldX, int worldZ, int surfaceY, Biome centerBiome) {
+        int radius = (SolarisConfig.WATER_BLEND_RADIUS.get() / WATER_BLEND_STEP) * WATER_BLEND_STEP;
+        if (radius <= 0) return centerBiome.getWaterColor();
+
+        long r = 0;
+        long g = 0;
+        long b = 0;
+        int count = 0;
+        BlockPos.MutableBlockPos samplePos = new BlockPos.MutableBlockPos();
+        for (int dz = -radius; dz <= radius; dz += WATER_BLEND_STEP) {
+            for (int dx = -radius; dx <= radius; dx += WATER_BLEND_STEP) {
+                int rgb;
+                if (dx == 0 && dz == 0) {
+                    rgb = centerBiome.getWaterColor();
+                } else {
+                    samplePos.set(worldX + dx, surfaceY, worldZ + dz);
+                    rgb = level.getBiome(samplePos).value().getWaterColor();
+                }
+                r += rgb >> 16 & 255;
+                g += rgb >> 8 & 255;
+                b += rgb & 255;
+                count++;
+            }
+        }
+        return (int) (r / count) << 16 | (int) (g / count) << 8 | (int) (b / count);
     }
 
     /** Applies {@code MapColor.calculateRGBColor}'s channel-swap by hand to a plain 0xRRGGBB color. */

@@ -31,8 +31,14 @@ public class GTClientCacheMixin {
     @Inject(method = "addVein", at = @At("RETURN"))
     private void solaris$onAddVein(ResourceKey<Level> dim, int gridX, int gridZ, GeneratedVeinMetadata vein,
                                    CallbackInfoReturnable<Boolean> cir) {
-        if (Boolean.TRUE.equals(cir.getReturnValue())) {
-            GtVeinRegistry.add(dim, vein);
-        }
+        // Deliberately unconditional — NOT gated on GTCEu's own return value. That value is
+        // "was this new to GTCEu's cache", which is false for any vein GTCEu already knew
+        // about from a PRIOR session's persisted cache (reloaded via readDimFile, which — per
+        // GtVeinRegistry's class doc — never goes through this method in the first place, so
+        // GTCEu still "knows" the vein internally but our own registry never saw it). Gating
+        // on that flag meant a vein GTCEu already knew about could never reach our registry
+        // again, permanently, even though GtVeinRegistry.add() already has its own correct,
+        // independent dedup via its SEEN set.
+        GtVeinRegistry.add(dim, vein);
     }
 }

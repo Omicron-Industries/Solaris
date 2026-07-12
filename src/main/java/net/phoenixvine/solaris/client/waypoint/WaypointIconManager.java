@@ -58,7 +58,7 @@ public final class WaypointIconManager {
     }
 
     /** Empty if {@code iconId} isn't an {@code item:} id, or the item is no longer registered (e.g. a removed mod). */
-    private static ItemStack resolveItem(String iconId) {
+    public static ItemStack resolveItem(String iconId) {
         try {
             ResourceLocation id = new ResourceLocation(iconId.substring(ITEM_PREFIX.length()));
             Item item = ForgeRegistries.ITEMS.getValue(id);

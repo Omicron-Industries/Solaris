@@ -27,6 +27,10 @@ public class Waypoint {
      * Gson can leave it null on an older waypoints file, so treat null the same as "".
      */
     public String category = "";
+    /**
+     * Hex color for the name label on the map — "" means "use the current theme's text color" (the old, only behavior).
+     */
+    public String labelColor = "";
 
     public Waypoint() {} // Gson
 
@@ -58,12 +62,21 @@ public class Waypoint {
     }
 
     public int colorArgb() {
+        return parseHex(color, 0xFFFFFFFF);
+    }
+
+    /** {@code fallback} (the theme's default text color) if {@link #labelColor} is unset/blank. */
+    public int labelColorArgb(int fallback) {
+        return labelColor == null || labelColor.isBlank() ? fallback : parseHex(labelColor, fallback);
+    }
+
+    private static int parseHex(String hex, int fallback) {
         try {
-            String clean = color.trim().toUpperCase(Locale.ROOT);
+            String clean = hex.trim().toUpperCase(Locale.ROOT);
             if (clean.startsWith("#")) clean = clean.substring(1);
             return 0xFF000000 | ((int) Long.parseLong(clean, 16) & 0xFFFFFF);
         } catch (Exception e) {
-            return 0xFFFFFFFF;
+            return fallback;
         }
     }
 }

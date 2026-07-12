@@ -91,15 +91,33 @@ public final class CaveColorSampler {
                 int northFoundY = foundColors[northIdx] != MapColor.NONE ? foundYs[northIdx] : foundY;
                 double relief = (foundY - northFoundY) * 0.8 + (((lx + lz) & 1) - 0.5) * 0.4;
 
-                MapColor.Brightness brightness;
-                if (relief > 0.6) brightness = MapColor.Brightness.HIGH;
-                else if (relief < -0.6) brightness = MapColor.Brightness.LOW;
-                else brightness = MapColor.Brightness.NORMAL;
-
-                pixels[lz * 16 + lx] = found.calculateRGBColor(brightness);
+                // Continuous ramp, not a hard 3-value HIGH/NORMAL/LOW step — the exact same
+                // discontinuity ChunkColorSampler's own relief shading used to have, which turned
+                // out to be the real cause of this whole map's "line"/"checkerboard" artifacts
+                // (see ChunkColorSampler.relief's doc). This sampler kept the old discrete version
+                // because it only ever covered a small reveal bubble around the player, where the
+                // artifact was subtle — now that the Nether renders through this same sampler
+                // across a much larger area (see SolarisTexture.isCaveSliceMode), the same
+                // discontinuity would be far more visible if left as-is.
+                pixels[lz * 16 + lx] = scaleBrightness(found.calculateRGBColor(MapColor.Brightness.NORMAL),
+                        ChunkColorSampler.relief(relief));
             }
         }
 
         return pixels;
+    }
+
+    /** Scales an already-ABGR-packed pixel's RGB channels by {@code factor}, clamped to a valid byte — same convention as {@code ChunkColorSampler}'s own copy. */
+    private static int scaleBrightness(int abgr, double factor) {
+        if (factor == 1.0) return abgr;
+        int a = abgr >>> 24;
+        int r = clampChannel((int) ((abgr & 255) * factor));
+        int g = clampChannel((int) ((abgr >> 8 & 255) * factor));
+        int b = clampChannel((int) ((abgr >> 16 & 255) * factor));
+        return a << 24 | b << 16 | g << 8 | r;
+    }
+
+    private static int clampChannel(int v) {
+        return Math.max(0, Math.min(255, v));
     }
 }
