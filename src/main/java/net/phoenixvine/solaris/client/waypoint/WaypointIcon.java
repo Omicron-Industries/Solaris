@@ -4,15 +4,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.item.ItemStack;
 import net.phoenixvine.solaris.client.render.SmoothShapes;
 
-/**
- * A small set of geometric marker shapes. Square/diamond/cross are plain
- * {@code GuiGraphics.fill} scanlines — keeps them legible at minimap scale without needing
- * icon art assets. Circle and triangle instead go through {@link SmoothShapes} for an
- * anti-aliased edge (a jagged pixel-stepped circle/triangle reads as a rendering bug more than
- * a style choice at marker scale). For an actual item/block as an icon, see
- * {@link WaypointIconManager}'s {@code item:} ids instead — this enum only covers the fixed
- * built-in geometric shapes, not the open-ended "any item in the game" picker.
- */
 public enum WaypointIcon {
 
     DOT,
@@ -27,10 +18,6 @@ public enum WaypointIcon {
         return values[(ordinal() + 1) % values.length];
     }
 
-    /**
-     * {@code WaypointIcon.valueOf}, but falls back to {@link #DOT} for anything unrecognized
-     * (including custom icon ids — {@link WaypointIconManager} checks those first).
-     */
     public static WaypointIcon fromId(String id) {
         try {
             return WaypointIcon.valueOf(id);
@@ -50,7 +37,6 @@ public enum WaypointIcon {
         };
     }
 
-    /** Draws this icon centered on (cx, cy), outlined in black, filled with {@code color}. */
     public void draw(GuiGraphics g, int cx, int cy, int radius, int color) {
         switch (this) {
             case HOME -> drawHome(g, cx, cy, radius, color);
@@ -93,7 +79,6 @@ public enum WaypointIcon {
     }
 
     private static void drawHome(GuiGraphics g, int cx, int cy, int r, int color) {
-        // Roof (small triangle) over a square base.
         drawTriangle(g, cx, cy - r / 2, Math.max(2, r - 1), color);
         g.fill(cx - r, cy, cx + r, cy + r, 0xFF000000);
         g.fill(cx - r + 1, cy + 1, cx + r - 1, cy + r - 1, color);
@@ -104,8 +89,6 @@ public enum WaypointIcon {
         SmoothShapes.drawCircle(g, cx, cy, r, color);
     }
 
-    /** Renders a real item icon scaled to {@code radius} instead of a hand-drawn shape. */
-    /** Package-visible so {@link WaypointIconManager} can reuse it for {@code item:}-prefixed icon ids. */
     static void drawItem(GuiGraphics g, int cx, int cy, int r, ItemStack stack) {
         int size = Math.max(8, r * 2);
         g.pose().pushPose();

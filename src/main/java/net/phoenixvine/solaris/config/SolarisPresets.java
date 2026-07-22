@@ -14,26 +14,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Named snapshots of the Display tab's tunables — saturation, water opacity/deep-only/threshold,
- * waypoint icon scale, hillshading + its strength — so a look you've dialed in can be saved and
- * swapped back to later instead of re-tweaking every slider by hand. Global (one file, not
- * per-world) since none of these settings are world-specific to begin with.
- *
- * Deliberately doesn't touch {@code SolarisTexture.invalidateAll()} itself — that's a rendering
- * concern the UI layer (which already imports the render package) triggers after {@link #load},
- * keeping this class a plain config-values store.
- */
 public final class SolarisPresets {
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final Path FILE = Paths.get("config", "phoenix_solaris", "presets.json");
+    private static final Path FILE = Paths.get("config", "solaris", "presets.json");
 
     private static Map<String, Preset> presets;
 
     private SolarisPresets() {}
 
-    /** The on-disk shape for one saved preset. */
     private static final class Preset {
 
         double saturation;
@@ -69,7 +58,6 @@ public final class SolarisPresets {
         persist();
     }
 
-    /** Applies a saved preset's values back into {@link SolarisConfig}. No-op if {@code name} isn't a known preset. */
     public static void load(String name) {
         ensureLoaded();
         Preset p = presets.get(name);

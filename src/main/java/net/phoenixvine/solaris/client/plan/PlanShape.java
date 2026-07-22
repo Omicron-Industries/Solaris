@@ -7,18 +7,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
-/**
- * A planned build shape — draw a footprint on the map, see it as an in-world wireframe outline
- * before placing a single real block, instead of test-building with wool. Plain public fields
- * (matching {@link net.phoenixvine.solaris.client.waypoint.Waypoint}'s persistence style) so
- * Gson round-trips it with zero custom adapters.
- *
- * {@link #points} holds different things per {@link #type}: exactly 2 (opposite corners) for
- * {@code RECTANGLE}, exactly 1 (center — {@link #radius} holds the size) for {@code CIRCLE}, 2+
- * (in drawing order) for {@code LINE}. {@link #baseY}/{@link #height} give every shape a
- * vertical extent — a box/cylinder/extruded wall from {@code baseY} to {@code baseY + height} —
- * rather than a flat outline with no sense of how tall the planned structure actually is.
- */
 public class PlanShape {
 
     public enum Type {
@@ -38,7 +26,7 @@ public class PlanShape {
     public int baseY;
     public int height = 4;
 
-    public PlanShape() {} // Gson
+    public PlanShape() {}
 
     public PlanShape(String name, ResourceLocation dimension, Type type, String colorHex) {
         this.id = UUID.randomUUID().toString();

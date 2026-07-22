@@ -7,18 +7,6 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 import java.util.List;
 import java.util.Set;
 
-/**
- * Skips mixins that target an optional soft-dependency's classes when that mod isn't
- * installed — right now, just the {@code mixin.gtceu.*} mixins, which target GTCEu classes
- * that only exist on a client with GTCEu installed. Without this, the mixin transformer would
- * try (and fail) to locate those classes on any client that doesn't have GTCEu at all.
- *
- * Deliberately does NOT use {@code ModList.get().isLoaded(...)} — mixin config plugins run
- * during early class transformation, well before FML has actually built {@code ModList}
- * (confirmed by a real crash: {@code ModList.get()} returned null here at boot). A raw
- * classpath resource lookup for one of GTCEu's own classes works at this stage instead, since
- * it only depends on the jar being on the classpath at all, not on FML's mod-loading state.
- */
 public class SolarisMixinPlugin implements IMixinConfigPlugin {
 
     private static final String GTCEU_PROBE_CLASS = "com/gregtechceu/gtceu/integration/map/cache/client/GTClientCache.class";

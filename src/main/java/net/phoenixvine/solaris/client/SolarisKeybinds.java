@@ -14,34 +14,34 @@ import org.lwjgl.glfw.GLFW;
 public class SolarisKeybinds {
 
     public static final KeyMapping OPEN_MAP = new KeyMapping(
-            "key.phoenix_solaris.map",
+            "key.solaris.map",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_M,
-            "key.categories.phoenix_solaris");
+            "key.categories.solaris");
 
     public static final KeyMapping NEW_WAYPOINT = new KeyMapping(
-            "key.phoenix_solaris.new_waypoint",
+            "key.solaris.new_waypoint",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_B,
-            "key.categories.phoenix_solaris");
+            "key.categories.solaris");
 
     public static final KeyMapping TOGGLE_COMPASS = new KeyMapping(
-            "key.phoenix_solaris.toggle_compass",
+            "key.solaris.toggle_compass",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_UNKNOWN,
-            "key.categories.phoenix_solaris");
+            "key.categories.solaris");
 
     public static final KeyMapping TOGGLE_MINIMAP_ROTATE = new KeyMapping(
-            "key.phoenix_solaris.toggle_minimap_rotate",
+            "key.solaris.toggle_minimap_rotate",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_UNKNOWN,
-            "key.categories.phoenix_solaris");
+            "key.categories.solaris");
 
     public static final KeyMapping CYCLE_MINIMAP_STYLE = new KeyMapping(
-            "key.phoenix_solaris.cycle_minimap_style",
+            "key.solaris.cycle_minimap_style",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_UNKNOWN,
-            "key.categories.phoenix_solaris");
+            "key.categories.solaris");
 
     @SubscribeEvent
     public static void register(RegisterKeyMappingsEvent event) {

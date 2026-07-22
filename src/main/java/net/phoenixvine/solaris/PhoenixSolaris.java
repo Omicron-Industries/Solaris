@@ -17,7 +17,7 @@ import org.apache.logging.log4j.Logger;
 @Mod(PhoenixSolaris.MOD_ID)
 public class PhoenixSolaris {
 
-    public static final String MOD_ID = "phoenix_solaris";
+    public static final String MOD_ID = "solaris";
     public static final Logger LOGGER = LogManager.getLogger();
 
     public PhoenixSolaris() {

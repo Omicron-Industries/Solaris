@@ -18,22 +18,6 @@ import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_ACCENT;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_DIM;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_PANEL;
 
-/**
- * A "new waypoint here" popup — like JourneyMap's waypoint-creation dialog — rather than the
- * full {@link WaypointListScreen}. Covers everything you'd otherwise have to jump into the
- * list screen to set afterward: an editable X/Y/Z (seeded from where you clicked/stood, but
- * fully editable — the click position is just a starting snapshot, not a locked-in value),
- * one-click color swatches alongside the hex box, an icon picker (built-ins and custom), and
- * initial visibility.
- *
- * Renders the map's terrain (dimmed) behind itself instead of the vanilla dirt-background —
- * {@code Minecraft} only ever renders one active {@code Screen}, so replacing the map screen
- * with this one would otherwise show raw gameplay behind the popup instead of the map it was
- * opened from. Uses {@link SolarisMapScreen#renderMapBackground} rather than that screen's full
- * {@code render} — re-rendering the FULL map (waypoint labels, context menu, title/footer text
- * and all) a second time as a "background" caused that text to visibly overlap this popup's own
- * text instead of sitting cleanly behind it.
- */
 @OnlyIn(Dist.CLIENT)
 public class QuickWaypointScreen extends Screen {
 
@@ -46,7 +30,7 @@ public class QuickWaypointScreen extends Screen {
 
     private final Screen parent;
     private final ResourceLocation dimension;
-    // Seed the X/Y/Z boxes' initial values; the boxes themselves are the source of truth for what saves.
+
     private final int initialX;
     private final int initialY;
     private final int initialZ;
@@ -79,11 +63,6 @@ public class QuickWaypointScreen extends Screen {
 
     @Override
     protected void init() {
-        // Vanilla only calls resize()/init() on the ACTIVE screen when the window resizes (e.g.
-        // toggling fullscreen) — the backgrounded `parent` isn't the active screen, so its own
-        // width/height silently go stale until it becomes active again. Keeping it in sync here,
-        // every time we ourselves are (re)initialized, fixes "resize doesn't take effect until
-        // a click" for the map background we render behind this popup.
         if (parent != null) {
             Minecraft mc = Minecraft.getInstance();
             parent.resize(mc, mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());

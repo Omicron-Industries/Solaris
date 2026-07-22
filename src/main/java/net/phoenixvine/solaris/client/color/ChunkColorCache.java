@@ -6,10 +6,6 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * Bounded, LRU-evicted cache of sampled chunk pixel arrays. In-memory only for v1 — a
- * chunk simply re-samples the next time it (re)loads; nothing is written to disk.
- */
 public final class ChunkColorCache {
 
     private ChunkColorCache() {}

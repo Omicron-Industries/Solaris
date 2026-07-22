@@ -15,7 +15,6 @@ import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_ACCENT;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_DIM;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_PANEL;
 
-/** Name-and-save popup for {@link SolarisPresets}, opened from the Display tab's "Save Preset" button. */
 @OnlyIn(Dist.CLIENT)
 public class SolarisPresetSaveScreen extends Screen {
 

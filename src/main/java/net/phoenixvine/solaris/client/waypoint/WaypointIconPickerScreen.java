@@ -17,21 +17,13 @@ import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_DIM;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_HEADER;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_PANEL;
 
-/**
- * A grid of every selectable icon — built-in shapes plus anything found in
- * {@code config/phoenix_solaris/waypoint_icons/} — click one to pick it. Replaces blindly
- * cycling through icons one at a time, which doesn't scale once custom icons are involved
- * (you'd have no way to see what's available without clicking through all of them).
- */
 @OnlyIn(Dist.CLIENT)
 public class WaypointIconPickerScreen extends Screen {
 
     private static final int CELL = 24;
     private static final int COLS = 6;
     private static final int LINE_H = 10;
-    // The "no custom icons yet" hint is much wider than the 6-icon grid — the panel needs to
-    // widen to actually fit it, or the text runs straight off the edge of the screen instead
-    // of just past the edge of its own panel.
+
     private static final int HINT_WRAP_W = 240;
 
     private final Screen parent;
@@ -65,7 +57,7 @@ public class WaypointIconPickerScreen extends Screen {
 
         boolean showHint = ids.stream().noneMatch(WaypointIconManager::isCustom);
         hintLines = showHint ? font.split(Component.literal(
-                "Drop PNGs in config/phoenix_solaris/waypoint_icons/ for custom icons"),
+                "Drop PNGs in config/solaris/waypoint_icons/ for custom icons"),
                 Math.min(HINT_WRAP_W, width - 40)) : List.of();
 
         int hintWidth = 0;
@@ -78,9 +70,6 @@ public class WaypointIconPickerScreen extends Screen {
         int bottomOfContent = gridY + rowsHeight() + (hintLines.isEmpty() ? 0 : 4 + hintLines.size() * LINE_H);
         int buttonY = Math.min(height - 50, bottomOfContent + 12);
 
-        // Passes our own parent through (not `this`) — picking an item, or canceling out of the
-        // item picker, should land you straight back on whichever screen opened this icon
-        // picker in the first place, same as clicking a shape in the grid below already does.
         addRenderableWidget(net.minecraft.client.gui.components.Button
                 .builder(Component.literal("Pick Item/Block..."),
                         b -> Minecraft.getInstance().setScreen(new WaypointItemPickerScreen(parent, current, onPick)))

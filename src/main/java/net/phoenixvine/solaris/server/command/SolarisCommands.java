@@ -20,14 +20,6 @@ import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 
-/**
- * Thin command wrappers over {@link SolarisServerAPI} — every handler is a one-line call into an
- * already-public static method, the same shape a KubeJS/QuestBuilder script would call directly
- * via plain Java interop. Mirrors {@code Phoenix-Domains}' own {@code DomainCommands} shape:
- * a single {@code RegisterCommandsEvent} subscriber, {@code Commands.literal(...).then(...)}
- * nesting, {@code hasPermission(2)} admin-gated throughout (every branch here is an
- * admin/scripting surface, not a player-facing convenience command).
- */
 @Mod.EventBusSubscriber(modid = PhoenixSolaris.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class SolarisCommands {
 
@@ -112,8 +104,6 @@ public class SolarisCommands {
                 .then(Commands.literal("chunk")
                         .then(Commands.literal("forceupdate").then(chunkForceUpdate))));
     }
-
-    // ── Handlers ──────────────────────────────────────────────────────────────
 
     private static int featureSet(CommandSourceStack source, ServerPlayer target, ServerLevel dimensionLevel,
                                   String featureName, String stateName) {

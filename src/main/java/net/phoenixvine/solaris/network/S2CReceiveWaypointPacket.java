@@ -13,7 +13,6 @@ import net.phoenixvine.solaris.client.waypoint.WaypointManager;
 
 import java.util.function.Supplier;
 
-/** A guildmate shared a waypoint with you — add it to your own list and let you know who sent it. */
 public class S2CReceiveWaypointPacket {
 
     private final String senderName;

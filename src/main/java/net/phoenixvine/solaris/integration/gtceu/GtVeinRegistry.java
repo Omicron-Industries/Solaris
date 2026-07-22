@@ -32,23 +32,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-/**
- * Solaris's own record of GTCEu ore veins actually revealed to the player, fed by
- * {@code GTClientCacheMixin} rather than read live from GTCEu's own
- * {@code GTClientCache.getVeinsInArea}/{@code getVeinsInBounds}. That query is unreliable for
- * freshly-prospected veins: {@code SPacketProspectOre} stores each vein under a raw
- * chunk-coordinate grid key, but area queries divide the query bounds by
- * {@code oreVeinGridSize} (3 by default) before looking a key up — so a lookup essentially
- * never lands on the cell a prospected vein was actually stored under, except right near the
- * world origin. Mirroring every reveal into this flat per-dimension list side-steps that bug
- * entirely instead of trying to replicate GTCEu's (broken) grid math.
- *
- * Also persisted to its own per-world file, same as {@link WaypointManager}: GTCEu's own disk
- * cache reload on rejoin (its {@code readDimFile}) writes straight into its internal grid map
- * rather than going through {@code addVein}, so this mixin-fed registry never sees those veins
- * come back either — without its own persistence, every revealed vein would need reprospecting
- * after every world restart.
- */
 public final class GtVeinRegistry {
 
     private GtVeinRegistry() {}
@@ -58,7 +41,6 @@ public final class GtVeinRegistry {
     private static final Set<String> SEEN = ConcurrentHashMap.newKeySet();
     private static String loadedWorldKey = null;
 
-    /** On-disk shape — a plain DTO so Gson round-trips it without needing an ItemStack (de)serializer. */
     private static final class SavedVein {
 
         int x, y, z;
@@ -67,11 +49,6 @@ public final class GtVeinRegistry {
         String itemId;
     }
 
-    /**
-     * Called from {@code GTClientCacheMixin} for every vein GTCEu's own client cache accepts —
-     * i.e. from inside a mixin injection into GTCEu's own code, so this must never let an
-     * exception escape (it would surface as GTCEu's {@code addVein} itself crashing).
-     */
     public static void add(ResourceKey<Level> dim, GeneratedVeinMetadata vein) {
         try {
             ensureLoaded();
@@ -89,17 +66,10 @@ public final class GtVeinRegistry {
                     .add(new GtceuIntegration.GtOreVein(vein.center(), name, argb, icon));
             save();
         } catch (Throwable ignored) {
-            // Best-effort marker data — one bad vein shouldn't break GTCEu's own cache update.
+
         }
     }
 
-    /**
-     * The vein's primary material's raw ore item (e.g. Raw Copper) — that's "the actual ore"
-     * for a vein per GTCEu's own convention (it's the same material {@link OreRenderLayer}
-     * already treats as the vein's identity for naming/color). Falls back to the ore block
-     * item, then to {@link ItemStack#EMPTY}, for exotic materials without a raw ore variant
-     * (the caller falls back to a generic marker shape in that case).
-     */
     private static ItemStack rawOreIcon(Material material) {
         if (material.isNull()) return ItemStack.EMPTY;
         ItemStack raw = ChemicalHelper.get(TagPrefix.rawOre, material);
@@ -183,7 +153,7 @@ public final class GtVeinRegistry {
 
     private static Path fileFor(String worldKey) {
         String safe = worldKey.replaceAll("[^a-zA-Z0-9._-]", "_");
-        return Paths.get("config", "phoenix_solaris", "gt_veins", safe + ".json");
+        return Paths.get("config", "solaris", "gt_veins", safe + ".json");
     }
 
     private static String idFromItem(ItemStack stack) {

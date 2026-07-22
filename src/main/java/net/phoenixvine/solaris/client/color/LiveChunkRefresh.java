@@ -15,19 +15,8 @@ import net.phoenixvine.solaris.client.perf.SolarisProfiler;
 import net.phoenixvine.solaris.client.render.SolarisTexture;
 import net.phoenixvine.solaris.config.SolarisConfig;
 
-/**
- * {@link ChunkColorEvents} only ever re-samples a chunk when it (re)loads, so a block you place
- * in a chunk you're already standing in never shows up on the map until you leave and come back
- * — the cache has no other trigger to refresh it. Rather than a full block-edit event/mixin (more
- * invasive, and fires constantly for every single block change including other players' and
- * redstone/pistons far more often than a player actually wants to see the map catch up), this
- * takes a periodic, bounded sweep instead: every {@link SolarisConfig#LIVE_REFRESH_INTERVAL_SECONDS}
- * seconds, re-sample whatever's currently loaded within {@link SolarisConfig#LIVE_REFRESH_RADIUS_CHUNKS}
- * of the player (only actually-loaded chunks — never forces new ones in) and force any open
- * map/minimap to redraw from the refreshed cache. Bounded to a small radius specifically so this
- * stays cheap regardless of how large the player's overall explored area or configured map radius
- * is — it never touches more than a small, fixed working set per pass.
- */
+import java.util.List;
+
 @Mod.EventBusSubscriber(modid = PhoenixSolaris.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public final class LiveChunkRefresh {
 
@@ -48,11 +37,6 @@ public final class LiveChunkRefresh {
         if (++tickCounter < intervalTicks) return;
         tickCounter = 0;
 
-        // WORLD_SURFACE sampling is wasted work in a ceiling dimension (the Nether) — see
-        // SolarisTexture.isCaveSliceMode's doc — since SolarisTexture never reads it there. Only
-        // the sweep itself is skipped; the save below still needs to run on schedule regardless
-        // of which dimension the player currently happens to be in, so any other dimension's
-        // still-dirty data isn't held up for an entire Nether visit.
         boolean writeEnabled = SolarisAPI.getFeatureState(SolarisAPI.FEATURE_WORLD_MAP, level.dimension().location())
                 .atLeast(SolarisFeatureState.ENABLED);
 
@@ -68,21 +52,74 @@ public final class LiveChunkRefresh {
                 for (int dx = -radius; dx <= radius; dx++) {
                     int chunkX = centerX + dx;
                     int chunkZ = centerZ + dz;
-                    // hasChunk is a cheap "is this already loaded" check — never forces a chunk
-                    // in, matching the read-only, best-effort spirit of this pass.
+
                     if (!level.hasChunk(chunkX, chunkZ)) continue;
 
                     ChunkKey key = ChunkKey.of(level, new ChunkPos(chunkX, chunkZ));
                     SolarisProfiler.time("chunkSample", () -> {
-                        int[] pixels = ChunkColorSampler.sample(level, key.toChunkPos());
+                        ChunkColorSampler.ColorSample colorSample = ChunkColorSampler.sample(level, key.toChunkPos());
                         ChunkColorSampler.HeightSample heightSample = ChunkColorSampler.sampleHeights(level,
                                 key.toChunkPos());
-                        ChunkColorCache.put(key, pixels);
+                        ChunkColorCache.put(key, colorSample.pixels);
+                        ChunkLightCache.put(key, colorSample.lightEmitting);
                         ChunkHeightCache.put(key, heightSample.heights);
                         ChunkWaterCache.put(key, heightSample.water);
                         ChunkRailCache.put(key, heightSample.rails);
-                        PersistentChunkStore.put(key, pixels, heightSample.heights, heightSample.water);
+                        ChunkWaterTintCache.put(key, colorSample.waterTint);
+                        ChunkWaterDepthCache.put(key, colorSample.waterDepth);
+                        ChunkWaterOceanCache.put(key, colorSample.waterOcean);
+                        ChunkFoliageCache.put(key, colorSample.foliage);
+
+                        PersistentChunkStore.put(key, colorSample.pixels, heightSample.heights,
+                                heightSample.water, colorSample.waterTint, colorSample.waterDepth,
+                                colorSample.waterOcean, colorSample.foliage);
+                        if (colorSample.hadFallback) {
+                            ChunkColorEvents.FALLBACK_TAINTED.add(key);
+                        } else {
+                            ChunkColorEvents.FALLBACK_TAINTED.remove(key);
+                        }
                     });
+                    refreshedAny = true;
+                }
+            }
+
+            int writeRange = SolarisConfig.WORLD_MAP_WRITE_RANGE_CHUNKS.get();
+            for (int dz = -writeRange; dz <= writeRange; dz++) {
+                for (int dx = -writeRange; dx <= writeRange; dx++) {
+                    int chunkX = centerX + dx;
+                    int chunkZ = centerZ + dz;
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) <= radius) continue;
+                    if (!level.hasChunk(chunkX, chunkZ)) continue;
+
+                    ChunkKey key = ChunkKey.of(level, new ChunkPos(chunkX, chunkZ));
+                    if (ChunkColorCache.contains(key)) continue;
+
+                    ChunkColorEvents.resample(level, key, key.toChunkPos());
+                    refreshedAny = true;
+                }
+            }
+
+            if (!ChunkColorEvents.FALLBACK_TAINTED.isEmpty()) {
+                for (ChunkKey key : List.copyOf(ChunkColorEvents.FALLBACK_TAINTED)) {
+                    if (!level.hasChunk(key.x(), key.z())) continue;
+                    ChunkColorSampler.ColorSample colorSample = ChunkColorSampler.sample(level, key.toChunkPos());
+                    ChunkColorSampler.HeightSample heightSample = ChunkColorSampler.sampleHeights(level,
+                            key.toChunkPos());
+                    if (colorSample.hadFallback) continue;
+
+                    ChunkColorCache.put(key, colorSample.pixels);
+                    ChunkLightCache.put(key, colorSample.lightEmitting);
+                    ChunkHeightCache.put(key, heightSample.heights);
+                    ChunkWaterCache.put(key, heightSample.water);
+                    ChunkRailCache.put(key, heightSample.rails);
+                    ChunkWaterTintCache.put(key, colorSample.waterTint);
+                    ChunkWaterDepthCache.put(key, colorSample.waterDepth);
+                    ChunkWaterOceanCache.put(key, colorSample.waterOcean);
+                    ChunkFoliageCache.put(key, colorSample.foliage);
+                    PersistentChunkStore.put(key, colorSample.pixels, heightSample.heights, heightSample.water,
+                            colorSample.waterTint, colorSample.waterDepth, colorSample.waterOcean,
+                            colorSample.foliage);
+                    ChunkColorEvents.FALLBACK_TAINTED.remove(key);
                     refreshedAny = true;
                 }
             }

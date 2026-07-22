@@ -10,23 +10,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * World-level, team-shared storage for {@link SolarisFeatureState} — Solaris's first-ever
- * server-side world data (everything else server-side so far, the progression tiers, is
- * per-player NBT). This needs to be genuinely shared rather than per-player: an admin/event
- * unlocking a feature for one member of a guild should apply to the whole guild, not just
- * whoever happened to trigger it — see {@code GuildsIntegration#ownerTokenFor}, which resolves
- * each player down to either their guild's UUID or their own, and is the only key this class
- * ever stores against.
- *
- * Mirrors Phoenix Guilds' own {@code GuildManager} {@code SavedData} shape exactly (factory via
- * {@code ServerLevel#getDataStorage()#computeIfAbsent}, a {@code save(CompoundTag)} override,
- * {@code setDirty()} on every mutation) — the same house pattern for "small world-scoped state
- * that needs to survive a restart," not a bespoke one.
- */
 public class SolarisFeatureStateData extends SavedData {
 
-    private static final String SAVE_KEY = "phoenix_solaris_feature_state";
+    private static final String SAVE_KEY = "solaris_feature_state";
 
     private final Map<UUID, Map<ResourceLocation, Map<String, SolarisFeatureState>>> byToken = new LinkedHashMap<>();
 
@@ -48,8 +34,7 @@ public class SolarisFeatureStateData extends SavedData {
                     try {
                         perFeature.put(featureId, SolarisFeatureState.valueOf(features.getString(featureId)));
                     } catch (IllegalArgumentException ignored) {
-                        // A state name that no longer exists (renamed/removed enum constant) —
-                        // drop it rather than fail the whole load over one stale entry.
+
                     }
                 }
                 perDimension.put(new ResourceLocation(dimensionKey), perFeature);
@@ -77,7 +62,6 @@ public class SolarisFeatureStateData extends SavedData {
         return tag;
     }
 
-    /** {@link SolarisFeatureState#ENABLED} if never set — same default-open philosophy as the client-side gate. */
     public SolarisFeatureState get(UUID token, ResourceLocation dimension, String featureId) {
         Map<ResourceLocation, Map<String, SolarisFeatureState>> perDimension = byToken.get(token);
         if (perDimension == null) return SolarisFeatureState.ENABLED;
@@ -93,10 +77,6 @@ public class SolarisFeatureStateData extends SavedData {
         setDirty();
     }
 
-    /**
-     * Every {@code dimension -> featureId -> state} entry for {@code token}, flattened for
-     * {@code S2CSyncFeatureStatePacket}.
-     */
     public Map<String, Map<String, SolarisFeatureState>> snapshot(UUID token) {
         Map<String, Map<String, SolarisFeatureState>> out = new LinkedHashMap<>();
         Map<ResourceLocation, Map<String, SolarisFeatureState>> perDimension = byToken.get(token);

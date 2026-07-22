@@ -12,6 +12,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 
+import java.io.IOException;
 import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,16 +21,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.UUID;
 
-/**
- * In-memory waypoint list, lazily (re)loaded whenever the current world/server changes —
- * waypoints are meaningless outside the save they were placed in, so each world gets its
- * own JSON file under {@code config/phoenix_solaris/waypoints/}, keyed by server address
- * (multiplayer) or save folder path (singleplayer). Also holds the per-world set of hidden
- * categories and the currently-tracked waypoint (for {@code WaypointCompassOverlay}) —
- * both saved alongside the waypoint list itself rather than as separate state, since neither
- * means anything outside the same per-world scope the waypoints themselves are keyed by.
- */
 public final class WaypointManager {
 
     private WaypointManager() {}
@@ -40,10 +33,6 @@ public final class WaypointManager {
     private static String trackedId = null;
     private static String loadedWorldKey = null;
 
-    /**
-     * The on-disk shape — a thin wrapper so hidden categories/tracked waypoint travel with the waypoints
-     * themselves instead of needing their own file.
-     */
     private static final class SaveData {
 
         List<Waypoint> waypoints = new ArrayList<>();
@@ -56,13 +45,6 @@ public final class WaypointManager {
         return WAYPOINTS;
     }
 
-    /**
-     * The single funnel every waypoint-consuming renderer (the list screen, the HUD compass, the
-     * in-world beams, the minimap markers) already reads through — {@link
-     * SolarisAPI#FEATURE_WAYPOINTS} is enforced here once, at {@code VISIBLE} (the "can see
-     * existing waypoints at all" threshold — see {@link #canPlace} for the higher, "can create
-     * new ones" threshold), rather than at each of those call sites separately.
-     */
     public static List<Waypoint> getVisibleForDimension(ResourceLocation dimension) {
         ensureLoaded();
         if (!SolarisAPI.getFeatureState(SolarisAPI.FEATURE_WAYPOINTS, dimension).atLeast(SolarisFeatureState.VISIBLE)) {
@@ -79,7 +61,6 @@ public final class WaypointManager {
         return out;
     }
 
-    /** Whether a new waypoint may currently be placed in {@code dimension} — the {@code ENABLED} threshold. */
     public static boolean canPlace(ResourceLocation dimension) {
         return SolarisAPI.getFeatureState(SolarisAPI.FEATURE_WAYPOINTS, dimension).atLeast(SolarisFeatureState.ENABLED);
     }
@@ -97,13 +78,6 @@ public final class WaypointManager {
         save();
     }
 
-    /**
-     * Removes by name rather than id — used by server-triggered removal ({@code
-     * SolarisServerAPI#removeWaypoint}), since the server never tracked the client-generated
-     * {@link Waypoint#id}. Locked waypoints are still removable this way (a server/admin action is
-     * a distinct, higher-privilege path than the player's own Delete button, which is what {@code
-     * Waypoint#locked} actually restricts).
-     */
     public static void removeByName(String name) {
         ensureLoaded();
         WAYPOINTS.removeIf(w -> {
@@ -114,7 +88,6 @@ public final class WaypointManager {
         save();
     }
 
-    /** Every distinct category currently in use, sorted, "" (uncategorized) always included. */
     public static List<String> getCategories() {
         ensureLoaded();
         Set<String> categories = new TreeSet<>();
@@ -135,7 +108,6 @@ public final class WaypointManager {
         save();
     }
 
-    /** The waypoint {@code WaypointCompassOverlay} should point at, or {@code null} for "nearest, automatically". */
     public static Waypoint getTracked() {
         ensureLoaded();
         if (trackedId == null) return null;
@@ -187,8 +159,7 @@ public final class WaypointManager {
                         trackedId = data.trackedId;
                     }
                 } catch (JsonSyntaxException e) {
-                    // Pre-category-support files were a raw waypoint array, not this wrapper
-                    // object — fall back to the old shape instead of silently losing them.
+
                     Type type = new TypeToken<List<Waypoint>>() {}.getType();
                     List<Waypoint> legacy = GSON.fromJson(json, type);
                     if (legacy != null) WAYPOINTS.addAll(legacy);
@@ -202,22 +173,57 @@ public final class WaypointManager {
 
     private static Path fileFor(String worldKey) {
         String safe = worldKey.replaceAll("[^a-zA-Z0-9._-]", "_");
-        return Paths.get("config", "phoenix_solaris", "waypoints", safe + ".json");
+        return Paths.get("config", "solaris", "waypoints", safe + ".json");
     }
 
-    /** Null when there's no current world to key against (e.g. on the title screen). */
+    public static Path currentWaypointsFile() {
+        String key = currentWorldKey();
+        return key == null ? null : fileFor(key);
+    }
+
+    private static String cachedWorldKey = null;
+    private static boolean cachedWorldKeyValid = false;
+
     public static String currentWorldKey() {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null) return null;
+        if (mc.level == null) {
+            cachedWorldKeyValid = false;
+            return null;
+        }
+        if (cachedWorldKeyValid) return cachedWorldKey;
 
         ServerData server = mc.getCurrentServer();
-        if (server != null) return "mp-" + server.ip;
-
-        if (mc.hasSingleplayerServer() && mc.getSingleplayerServer() != null) {
+        String key;
+        if (server != null) {
+            key = "mp-" + server.ip;
+        } else if (mc.hasSingleplayerServer() && mc.getSingleplayerServer() != null) {
             Path root = mc.getSingleplayerServer().getWorldPath(LevelResource.ROOT);
-            return "sp-" + root.toAbsolutePath().normalize();
+            key = "sp-" + singleplayerWorldId(root);
+        } else {
+            key = "unknown";
         }
 
-        return "unknown";
+        cachedWorldKey = key;
+        cachedWorldKeyValid = true;
+        return key;
+    }
+
+    private static final String WORLD_ID_FILE = "solaris_world_id.txt";
+
+    private static String singleplayerWorldId(Path worldRoot) {
+        Path idFile = worldRoot.resolve(WORLD_ID_FILE);
+        try {
+            if (Files.exists(idFile)) {
+                String existing = Files.readString(idFile).trim();
+                if (!existing.isEmpty()) return existing;
+            }
+            String fresh = UUID.randomUUID().toString();
+            Files.createDirectories(worldRoot);
+            Files.writeString(idFile, fresh);
+            return fresh;
+        } catch (IOException e) {
+
+            return worldRoot.toAbsolutePath().normalize().toString();
+        }
     }
 }

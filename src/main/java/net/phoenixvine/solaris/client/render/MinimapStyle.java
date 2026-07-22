@@ -1,11 +1,5 @@
 package net.phoenixvine.solaris.client.render;
 
-/**
- * A curated size+shape preset for the corner minimap, cycled through with a single keybind
- * (mirrors JourneyMap's minimap-type cycle key) rather than exposing size and shape as two
- * separate settings a player has to dig through a menu for. Each preset sets both {@code
- * SolarisConfig.MINIMAP_SIZE} and {@code MINIMAP_SHAPE} together.
- */
 public enum MinimapStyle {
 
     SMALL_SQUARE(96, MinimapShape.SQUARE, "Small Square"),
@@ -14,12 +8,15 @@ public enum MinimapStyle {
     SMALL_CIRCLE(96, MinimapShape.CIRCLE, "Small Circle"),
     MEDIUM_CIRCLE(128, MinimapShape.CIRCLE, "Medium Circle"),
     LARGE_CIRCLE(176, MinimapShape.CIRCLE, "Large Circle"),
-    // One size each for the novel shapes — a full small/medium/large spread per shape would make
-    // a single cycle key step through 15 presets; these are for variety, not fine size tuning
-    // (Square/Circle already cover that), so one representative size keeps the cycle short.
-    TRIANGLE(128, MinimapShape.TRIANGLE, "Triangle"),
-    DIAMOND(128, MinimapShape.DIAMOND, "Diamond"),
-    HEXAGON(128, MinimapShape.HEXAGON, "Hexagon");
+    SMALL_TRIANGLE(96, MinimapShape.TRIANGLE, "Small Triangle"),
+    MEDIUM_TRIANGLE(128, MinimapShape.TRIANGLE, "Medium Triangle"),
+    LARGE_TRIANGLE(176, MinimapShape.TRIANGLE, "Large Triangle"),
+    SMALL_DIAMOND(96, MinimapShape.DIAMOND, "Small Diamond"),
+    MEDIUM_DIAMOND(128, MinimapShape.DIAMOND, "Medium Diamond"),
+    LARGE_DIAMOND(176, MinimapShape.DIAMOND, "Large Diamond"),
+    SMALL_HEXAGON(96, MinimapShape.HEXAGON, "Small Hexagon"),
+    MEDIUM_HEXAGON(128, MinimapShape.HEXAGON, "Medium Hexagon"),
+    LARGE_HEXAGON(176, MinimapShape.HEXAGON, "Large Hexagon");
 
     public final int size;
     public final MinimapShape shape;
@@ -36,9 +33,6 @@ public enum MinimapStyle {
         return values[(ordinal() + 1) % values.length];
     }
 
-    /**
-     * Closest matching preset to a size/shape pair loaded from config, for the first cycle after those settings change.
-     */
     public static MinimapStyle closestTo(int size, MinimapShape shape) {
         MinimapStyle best = SMALL_SQUARE;
         int bestDiff = Integer.MAX_VALUE;

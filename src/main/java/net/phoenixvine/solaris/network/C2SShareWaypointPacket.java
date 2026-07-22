@@ -11,13 +11,6 @@ import net.phoenixvine.solaris.integration.guilds.GuildsIntegration;
 import java.util.List;
 import java.util.function.Supplier;
 
-/**
- * Client asks the server to route one of its waypoints to the sender's online guildmates.
- * Deliberately doesn't trust the client's own idea of "am I in a guild" for anything beyond
- * showing/hiding the "Share to Guild" button — {@link GuildsIntegration#getOnlineGuildmates} runs
- * server-side, where guild membership actually lives, so a modified/stale client can't spoof
- * sharing to players it isn't really guilded with.
- */
 public class C2SShareWaypointPacket {
 
     private final String name;

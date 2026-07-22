@@ -8,10 +8,6 @@ import net.phoenixvine.solaris.PhoenixSolaris;
 
 import java.util.Optional;
 
-/**
- * Solaris's first network channel — set up for guild waypoint sharing, mirrors Phoenix Guilds' own
- * {@code GuildNetwork}.
- */
 public final class SolarisNetwork {
 
     private static final String PROTOCOL = "1";

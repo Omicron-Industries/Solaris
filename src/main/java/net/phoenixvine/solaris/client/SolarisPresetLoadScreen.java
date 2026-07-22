@@ -16,9 +16,6 @@ import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_ACCENT;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_DIM;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_PANEL;
 
-/**
- * Preset picker opened from the Display tab's "Load Preset" button — one row per saved preset, with a delete button.
- */
 @OnlyIn(Dist.CLIENT)
 public class SolarisPresetLoadScreen extends Screen {
 

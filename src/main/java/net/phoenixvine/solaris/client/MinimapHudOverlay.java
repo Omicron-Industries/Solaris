@@ -19,6 +19,7 @@ import net.phoenixvine.solaris.client.render.ModernPanel;
 import net.phoenixvine.solaris.client.render.PlayerArrow;
 import net.phoenixvine.solaris.client.render.SmoothShapes;
 import net.phoenixvine.solaris.client.render.SolarisTexture;
+import net.phoenixvine.solaris.client.render.TextureAddressing;
 import net.phoenixvine.solaris.client.waypoint.Waypoint;
 import net.phoenixvine.solaris.client.waypoint.WaypointManager;
 import net.phoenixvine.solaris.config.SolarisConfig;
@@ -30,11 +31,6 @@ import java.util.List;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_ACCENT;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_BORDER;
 
-/**
- * Small corner minimap. The backing {@link SolarisTexture} only rebuilds when the player
- * crosses a chunk boundary; the crop window inside it shifts every frame off the player's
- * exact sub-block position, so the minimap still pans smoothly between rebuilds.
- */
 @Mod.EventBusSubscriber(modid = PhoenixSolaris.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public class MinimapHudOverlay {
 
@@ -56,10 +52,7 @@ public class MinimapHudOverlay {
         if (event.getOverlay() != VanillaGuiOverlay.HOTBAR.type()) return;
 
         Minecraft mc = Minecraft.getInstance();
-        // Forge still fires hotbar-overlay events while a Screen is open (vanilla itself keeps
-        // rendering the HUD underneath most menus) — without this check the minimap rendered
-        // behind/through every Solaris screen, most visibly the fullscreen map itself, where a
-        // second, redundant map peeking out from a corner made no sense.
+
         if (mc.player == null || mc.level == null || mc.options.hideGui || mc.screen != null) return;
         if (!SolarisAPI.getFeatureState(SolarisAPI.FEATURE_MINIMAP, mc.level.dimension().location())
                 .atLeast(SolarisFeatureState.VISIBLE)) {
@@ -68,9 +61,8 @@ public class MinimapHudOverlay {
 
         SolarisTexture tex = texture();
         int screenSize = SolarisConfig.MINIMAP_SIZE.get();
-        // Half of the radius's max-safe span — keeps the crop window in bounds even at the
-        // smallest configurable radius (see SolarisTexture's bounds note on this formula).
-        int viewPixels = tex.getRadiusChunks() * 16;
+
+        int viewPixels = Math.max(16, (int) (tex.getRadiusChunks() * 16 / SolarisConfig.MINIMAP_ZOOM.get()));
 
         BlockPos blockPos = mc.player.blockPosition();
         int chunkX = blockPos.getX() >> 4;
@@ -87,6 +79,10 @@ public class MinimapHudOverlay {
         float u = (float) (playerPixelX - viewPixels / 2.0);
         float v = (float) (playerPixelZ - viewPixels / 2.0);
 
+        int spanChunks = tex.getRadiusChunks() * 2 + 1;
+        int originX = TextureAddressing.properMod(chunkX - tex.getRadiusChunks(), spanChunks) * 16;
+        int originZ = TextureAddressing.properMod(chunkZ - tex.getRadiusChunks(), spanChunks) * 16;
+
         int screenW = mc.getWindow().getGuiScaledWidth();
         int x = screenW - screenSize - MARGIN;
         int y = MARGIN;
@@ -100,13 +96,6 @@ public class MinimapHudOverlay {
             ModernPanel.draw(g, x - 5, y - 5, screenSize + 10, screenSize + 10, C_BORDER);
         }
 
-        // Rotate-mode always shows the player facing "up" instead of true north — the terrain
-        // and every marker rotate around the player instead of the player's own arrow rotating
-        // against fixed terrain. Content angle 180-yaw (not just -yaw) and the arrow's own fixed
-        // angle of 180 both come from the same verified convention PlayerArrow's chevron already
-        // uses (yaw 0 -> south/screen-down): rotating "down" content by 180-yaw lines the yaw
-        // direction up with screen-up, and a chevron drawn at a fixed 180 (rather than the live
-        // yaw) points the same screen-up direction by that identical convention.
         boolean rotate = SolarisConfig.MINIMAP_ROTATE.get();
         float contentAngle = rotate ? 180f - mc.player.getYRot() : 0f;
 
@@ -119,11 +108,13 @@ public class MinimapHudOverlay {
         }
 
         float scale = screenSize / (float) viewPixels;
+        float wrappedU = TextureAddressing.properMod(originX + u, tex.getSizePixels());
+        float wrappedV = TextureAddressing.properMod(originZ + v, tex.getSizePixels());
         if (shape == MinimapShape.SQUARE) {
-            g.blit(tex.textureId(), x, y, screenSize, screenSize, u, v, viewPixels, viewPixels,
+            g.blit(tex.textureId(), x, y, screenSize, screenSize, wrappedU, wrappedV, viewPixels, viewPixels,
                     tex.getSizePixels(), tex.getSizePixels());
         } else {
-            drawClippedTerrain(g, shape, tex, x, y, screenSize, u, v, scale);
+            drawClippedTerrain(g, shape, tex, x, y, screenSize, wrappedU, wrappedV, scale);
         }
 
         int radius = screenSize / 2;
@@ -134,9 +125,7 @@ public class MinimapHudOverlay {
             if (wPixelX < u || wPixelX > u + viewPixels || wPixelZ < v || wPixelZ > v + viewPixels) continue;
             int wx = x + (int) ((wPixelX - u) * scale);
             int wy = y + (int) ((wPixelZ - v) * scale);
-            // Rotating a point around the shape's own center (cx, cy) — the pose transform above
-            // — never changes its position relative to that center, so this plain pre-rotation
-            // containment check is valid in rotate mode too, not just north-up.
+
             if (shape != MinimapShape.SQUARE && !containsPoint(shape, wx - x, wy - y, screenSize)) continue;
             g.fill(wx - 2, wy - 2, wx + 2, wy + 2, 0xFF000000);
             g.fill(wx - 1, wy - 1, wx + 1, wy + 1, w.colorArgb());
@@ -153,45 +142,48 @@ public class MinimapHudOverlay {
 
         PlayerArrow.draw(g, cx, cy, 6, rotate ? 180f : mc.player.getYRot(), C_ACCENT,
                 mc.player.getSkinTextureLocation());
+
+        drawInfoText(g, mc, x, y, screenSize);
     }
 
-    /**
-     * Clips the terrain blit to a non-square shape by never drawing outside it in the first
-     * place, rather than masking afterward — vanilla {@code GuiGraphics} only supports
-     * rectangular scissor regions, so a real non-rectangular clip isn't otherwise available
-     * without a shader pass. Draws the blit as many thin horizontal strips, each cropped to the
-     * shape's chord width at that row (exact circle math for {@code CIRCLE}, a per-row polygon
-     * scanline against {@link MinimapShape#vertices()} for every other shape); cheap enough for a
-     * HUD element (a handful of blit calls, not per-pixel) and correctly anti-aliased-looking at
-     * typical minimap sizes since the strip height is small relative to the shape's size.
-     */
+    private static void drawInfoText(GuiGraphics g, Minecraft mc, int x, int y, int screenSize) {
+        boolean showTime = SolarisConfig.MINIMAP_SHOW_TIME.get();
+        boolean showCoords = SolarisConfig.MINIMAP_SHOW_COORDS.get();
+        if (!showTime && !showCoords) return;
+
+        int textY = y + screenSize + 7;
+        int cx = x + screenSize / 2;
+        if (showTime) {
+            g.drawCenteredString(mc.font, formatTime(mc.level.getDayTime()), cx, textY, C_ACCENT);
+            textY += mc.font.lineHeight + 1;
+        }
+        if (showCoords) {
+            BlockPos pos = mc.player.blockPosition();
+            String coords = pos.getX() + ", " + pos.getY() + ", " + pos.getZ();
+            g.drawCenteredString(mc.font, coords, cx, textY, C_ACCENT);
+        }
+    }
+
+    private static String formatTime(long dayTime) {
+        long ticks = ((dayTime % 24000) + 24000) % 24000;
+        int hour = (int) ((ticks / 1000 + 6) % 24);
+        int minute = (int) (ticks % 1000 * 60 / 1000);
+        return String.format("%02d:%02d", hour, minute);
+    }
+
     private static void drawClippedTerrain(GuiGraphics g, MinimapShape shape, SolarisTexture tex, int x, int y,
                                            int screenSize, float u, float v, float scale) {
-        int radius = screenSize / 2;
-        int cx = x + radius;
         int stripH = Math.max(1, screenSize / 64);
 
         for (int i = 0; i < screenSize; i += stripH) {
             int destH = Math.min(stripH, screenSize - i);
             int rowCenter = i + destH / 2;
 
-            int destX;
-            int destW;
-            if (shape == MinimapShape.CIRCLE) {
-                int dy = rowCenter - radius;
-                long discriminant = (long) radius * radius - (long) dy * dy;
-                if (discriminant < 0) continue;
-                int halfW = (int) Math.sqrt(discriminant);
-                if (halfW <= 0) continue;
-                destX = cx - halfW;
-                destW = halfW * 2;
-            } else {
-                float[] span = rowSpan(shape.vertices(), rowCenter / (float) screenSize);
-                if (span == null) continue;
-                destX = x + Math.round(span[0] * screenSize);
-                destW = Math.round((span[1] - span[0]) * screenSize);
-                if (destW <= 0) continue;
-            }
+            float[] span = shape.rowSpan(rowCenter / (float) screenSize);
+            if (span == null) continue;
+            int destX = x + Math.round(span[0] * screenSize);
+            int destW = Math.round((span[1] - span[0]) * screenSize);
+            if (destW <= 0) continue;
 
             int destY = y + i;
             float srcX = u + (destX - x) / scale;
@@ -204,44 +196,8 @@ public class MinimapHudOverlay {
         }
     }
 
-    /** Whether ({@code lx}, {@code ly}) — minimap-local pixel coords — falls inside {@code shape}. */
     private static boolean containsPoint(MinimapShape shape, int lx, int ly, int screenSize) {
-        if (shape == MinimapShape.CIRCLE) {
-            int radius = screenSize / 2;
-            int dx = lx - radius;
-            int dy = ly - radius;
-            return dx * dx + dy * dy <= radius * radius;
-        }
-        float[] span = rowSpan(shape.vertices(), ly / (float) screenSize);
-        if (span == null) return false;
-        float nx = lx / (float) screenSize;
-        return nx >= span[0] && nx <= span[1];
-    }
-
-    /**
-     * The horizontal span (both normalized 0..1) where a horizontal scanline at height {@code ny}
-     * crosses {@code verts}' polygon boundary, via standard edge-intersection — correct for any
-     * convex polygon (every shape {@link MinimapShape} currently defines), where the min/max of
-     * all edge crossings is always a single contiguous span. {@code null} if the scanline misses
-     * the polygon entirely (only possible right at the very top/bottom vertex rows).
-     */
-    private static float[] rowSpan(float[][] verts, float ny) {
-        float minX = Float.MAX_VALUE;
-        float maxX = -Float.MAX_VALUE;
-        int n = verts.length;
-        for (int i = 0; i < n; i++) {
-            float[] a = verts[i];
-            float[] b = verts[(i + 1) % n];
-            float ay = a[1];
-            float by = b[1];
-            if ((ay <= ny && by > ny) || (by <= ny && ay > ny)) {
-                float t = (ny - ay) / (by - ay);
-                float px = a[0] + t * (b[0] - a[0]);
-                minX = Math.min(minX, px);
-                maxX = Math.max(maxX, px);
-            }
-        }
-        return minX <= maxX ? new float[] { minX, maxX } : null;
+        return shape.containsPoint(lx, ly, screenSize);
     }
 
     private static void drawPolygonOutline(GuiGraphics g, MinimapShape shape, int cx, int cy, int outlineSize) {

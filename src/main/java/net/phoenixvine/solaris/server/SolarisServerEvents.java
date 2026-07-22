@@ -6,10 +6,6 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.phoenixvine.solaris.PhoenixSolaris;
 
-/**
- * Pushes a player's persisted Solaris progression state to their own client as soon as they connect — see
- * {@link SolarisServerAPI}.
- */
 @Mod.EventBusSubscriber(modid = PhoenixSolaris.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class SolarisServerEvents {
 

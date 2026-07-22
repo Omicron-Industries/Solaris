@@ -9,21 +9,6 @@ import net.phoenixvine.solaris.PhoenixSolaris;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.RenderSystem;
 
-/**
- * Anti-aliased circle/triangle marker shapes for the map and HUD, in place of the blocky
- * {@code GuiGraphics.fill} scanline shapes {@code WaypointIcon}/{@code PlayerArrow} used to
- * draw directly — those snap every edge to whole pixels, which reads as a jagged rendering
- * bug rather than a style choice at the small sizes markers actually render at. The map/HUD
- * (like quest markers) are one of the few places in this mod family allowed to break from the
- * pixel-art look on purpose.
- *
- * Implemented as two small pre-baked alpha-mask textures (a circle and a south-pointing
- * triangle) with real analytic edge coverage computed per source pixel — not just a hard
- * radius/edge cutoff — then bilinear-filtered on upload ({@link DynamicTexture#setFilter}) so
- * scaling them up for on-screen sizes stays smooth. Tinted per call via
- * {@link RenderSystem#setShaderColor} (reset immediately after) instead of baking one texture
- * per color, since marker colors are arbitrary/player-chosen.
- */
 public final class SmoothShapes {
 
     private static final int TEX_SIZE = 40;
@@ -40,34 +25,23 @@ public final class SmoothShapes {
 
     private SmoothShapes() {}
 
-    /** Draws a filled circle centered on ({@code cx}, {@code cy}) with the given radius. */
     public static void drawCircle(GuiGraphics g, int cx, int cy, int radius, int argb) {
         ensureLoaded();
         int size = Math.round(radius * CIRCLE_SCALE);
         blitTinted(g, circleTex, cx - size / 2, cy - size / 2, size, size, argb);
     }
 
-    /**
-     * Draws a stroke-only circle outline (an annulus, not a filled disc) — safe to layer over
-     * other content underneath, since everything away from the ring itself has zero coverage.
-     */
     public static void drawRing(GuiGraphics g, int cx, int cy, int radius, int argb) {
         ensureLoaded();
         int size = Math.round(radius * CIRCLE_SCALE);
         blitTinted(g, ringTex, cx - size / 2, cy - size / 2, size, size, argb);
     }
 
-    /**
-     * Draws a south-pointing (apex-down) triangle whose bounding box top-left is
-     * ({@code cx - halfWidth}, {@code topY}) — same box parameters the old scanline
-     * {@code drawTriangle} took, so callers didn't need to re-derive their geometry.
-     */
     public static void drawTriangleSouth(GuiGraphics g, int cx, int topY, int halfWidth, int height, int argb) {
         ensureLoaded();
         blitTriangle(g, cx, topY, halfWidth, height, argb, false);
     }
 
-    /** Same as {@link #drawTriangleSouth}, but apex-up — reuses the same baked texture, vertically flipped. */
     public static void drawTriangleNorth(GuiGraphics g, int cx, int topY, int halfWidth, int height, int argb) {
         ensureLoaded();
         blitTriangle(g, cx, topY, halfWidth, height, argb, true);
@@ -78,9 +52,7 @@ public final class SmoothShapes {
         int x = cx - halfWidth;
         int w = halfWidth * 2;
         setTint(argb);
-        // Flipping vertically by sampling from the bottom of the source texture upward (negative
-        // vHeight) — same technique vanilla's own PlayerFaceRenderer uses for upside-down faces —
-        // avoids baking a second, mirrored triangle texture just for the apex-up icons.
+
         if (flip) {
             g.blit(triangleTex, x, topY, w, height, 0, TEX_SIZE, TEX_SIZE, -TEX_SIZE, TEX_SIZE, TEX_SIZE);
         } else {
@@ -161,7 +133,7 @@ public final class SmoothShapes {
         float topY = pad;
         float botY = pad + TRI_HEIGHT_PX;
         float midX = TEX_SIZE / 2f;
-        // Base corners at the top, apex at the bottom — matches the old scanline triangle's convention.
+
         float ax = midX - TRI_HALF_BASE_PX;
         float ay = topY;
         float bx = midX + TRI_HALF_BASE_PX;
@@ -183,11 +155,6 @@ public final class SmoothShapes {
         return image;
     }
 
-    /**
-     * Signed perpendicular distance from ({@code px}, {@code py}) to the line through
-     * ({@code ax}, {@code ay})→({@code bx}, {@code by}) — positive on the triangle's interior
-     * side (verified against the actual winding order {@link #bakeTriangle()} uses).
-     */
     private static float edgeDistance(float ax, float ay, float bx, float by, float px, float py) {
         float ex = bx - ax;
         float ey = by - ay;
@@ -200,7 +167,6 @@ public final class SmoothShapes {
         return Math.max(0f, Math.min(1f, v));
     }
 
-    /** White RGB with {@code alpha} coverage — channel order doesn't matter for a pure white pixel. */
     private static int packWhite(float alpha) {
         int a = Math.round(alpha * 255f);
         return a << 24 | 0x00FFFFFF;

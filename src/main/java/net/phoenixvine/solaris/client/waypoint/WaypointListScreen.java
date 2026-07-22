@@ -26,7 +26,6 @@ import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_HEADER;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_PANEL;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_TEXT;
 
-/** Add/rename/recolor/re-icon/delete waypoints for the current world, with search and sort. */
 @OnlyIn(Dist.CLIENT)
 public class WaypointListScreen extends Screen {
 
@@ -44,7 +43,7 @@ public class WaypointListScreen extends Screen {
     private int scrollOffset = 0;
     private int listTop;
     private int listBottom;
-    /** {@code null} means "all categories" — not one of {@link WaypointManager#getCategories()}. */
+
     private String categoryFilter = null;
     private EditBox categoryBox;
     private EditBox labelColorBox;
@@ -211,27 +210,15 @@ public class WaypointListScreen extends Screen {
         init();
     }
 
-    /**
-     * Truncates with a trailing "…" if {@code text} is wider than {@code maxWidth}, instead
-     * of overflowing past the row and bleeding into the edit panel next to it.
-     */
     private String truncate(String text, int maxWidth) {
         if (font.width(text) <= maxWidth) return text;
         return font.plainSubstrByWidth(text, maxWidth - font.width("…")) + "…";
     }
 
-    /**
-     * Sends the currently-selected waypoint to the server for routing to the sender's online
-     * guildmates (see {@code C2SShareWaypointPacket}) — the client only decides whether to show
-     * this button at all ({@link GuildsIntegration#isAvailable()}, a plain mod-loaded check);
-     * actual guild membership is resolved server-side, where it actually lives.
-     */
     private void shareSelected() {
         if (selected == null) return;
         Minecraft mc = Minecraft.getInstance();
-        // Gated against wherever the player actually is right now, not the waypoint's own
-        // dimension — this is "can I use the sharing feature at all", the same "am I allowed to
-        // do this from here" question every other gated action asks.
+
         boolean allowed = mc.level != null ?
                 SolarisAPI.isFeatureEnabled(SolarisAPI.FEATURE_GUILD_SHARE, mc.level.dimension().location()) :
                 SolarisAPI.isFeatureEnabled(SolarisAPI.FEATURE_GUILD_SHARE);
@@ -275,7 +262,6 @@ public class WaypointListScreen extends Screen {
         return categoryFilter.isEmpty() ? "Uncategorized" : categoryFilter;
     }
 
-    /** Cycles null ("All") -> each known category in order -> back to null. */
     private String nextCategory(List<String> categories, String current) {
         if (current == null) return categories.isEmpty() ? null : categories.get(0);
         int idx = categories.indexOf(current);
@@ -283,7 +269,6 @@ public class WaypointListScreen extends Screen {
         return categories.get(idx + 1);
     }
 
-    /** Filtered by the search box and category filter, then sorted by name or distance-from-player. */
     private List<Waypoint> visibleList() {
         String query = searchBox != null ? searchBox.getValue().trim().toLowerCase(Locale.ROOT) : "";
         List<Waypoint> out = new ArrayList<>();

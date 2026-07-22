@@ -14,13 +14,6 @@ import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_ACCENT;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_DIM;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_PANEL;
 
-/**
- * A small "jump to coordinate" popup — same dimmed-map-background style as
- * {@link net.phoenixvine.solaris.client.waypoint.QuickWaypointScreen}, just two fields instead of
- * a full waypoint form. Only pans the flat map (see {@link SolarisMapScreen#goToCoordinate}) —
- * jumping the globe's rotation to a specific coordinate is a meaningfully different problem
- * (inverse of {@code GlobeCamera.sphereToScreen}, not a viewport offset) and out of scope here.
- */
 @OnlyIn(Dist.CLIENT)
 public class QuickGotoScreen extends Screen {
 
@@ -78,8 +71,7 @@ public class QuickGotoScreen extends Screen {
             parent.goToCoordinate(worldX, worldZ);
             onClose();
         } catch (NumberFormatException ignored) {
-            // Empty/incomplete input — leave the popup open rather than jumping to a fallback
-            // coordinate the player never actually asked for.
+
         }
     }
 
@@ -104,7 +96,7 @@ public class QuickGotoScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == 257 || keyCode == 335) { // Enter / numpad Enter
+        if (keyCode == 257 || keyCode == 335) {
             go();
             return true;
         }

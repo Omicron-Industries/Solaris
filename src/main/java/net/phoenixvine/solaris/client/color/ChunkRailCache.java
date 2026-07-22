@@ -7,15 +7,6 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * Bounded, LRU-evicted cache of which columns in a chunk have a rail block at the surface —
- * paired with {@link ChunkHeightCache}/{@link ChunkWaterCache}, populated from the same {@code
- * ChunkColorSampler.sampleHeights} pass. Feeds {@code SolarisMapScreen}'s connected-rail-line
- * overlay rather than {@code ChunkColorSampler}'s own per-pixel color output — a raster dot per
- * rail block reads as noisy scattered pixels at typical zoom, not a railway; a vector line drawn
- * between adjacent rail columns reads the way a real transit-map line does, and stays clean
- * regardless of zoom level the way raster pixels don't.
- */
 public final class ChunkRailCache {
 
     private ChunkRailCache() {}
@@ -37,7 +28,6 @@ public final class ChunkRailCache {
         return CACHE.get(key);
     }
 
-    /** Flat world-space lookup — resolves the owning chunk and column itself, for the connected-rail-line overlay. */
     public static boolean isRailAt(ResourceLocation dimension, int worldX, int worldZ) {
         boolean[] rails = get(new ChunkKey(dimension, worldX >> 4, worldZ >> 4));
         if (rails == null) return false;

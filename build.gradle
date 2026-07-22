@@ -40,6 +40,26 @@ repositories {
         // Phoenix Domains already uses for its own dependency on Solaris.
         dir 'libs'
     }
+    maven {
+        // FramedBlocks + Copycats — optional camouflage-block map-color integrations only, see
+        // integration.framedblocks / integration.copycats. Both publish to Modrinth's own maven
+        // proxy (verified: no self-hosted maven for either).
+        name = 'Modrinth Maven'
+        url = 'https://api.modrinth.com/maven'
+        content {
+            includeGroup 'maven.modrinth'
+        }
+    }
+    maven {
+        // Domum Ornamentum — optional camouflage-block map-color integration only, see
+        // integration.domumornamentum. LDTTeam's own maven (verified via their shared Gradle
+        // conventions script, ldtteam/OperaPublicaCreator) — not on Modrinth/CurseForge maven.
+        name = 'LDTTeam Maven'
+        url = 'https://ldtteam.jfrog.io/ldtteam/mods-maven'
+        content {
+            includeGroup 'com.ldtteam'
+        }
+    }
 }
 
 version = mod_version
@@ -87,7 +107,7 @@ legacyForge {
 }
 jar {
     manifest.attributes([
-            "MixinConfigs": "phoenix_solaris.mixins.json"
+            "MixinConfigs": "solaris.mixins.json"
     ])
 }
 
@@ -108,6 +128,27 @@ dependencies {
     // isAvailable()-guarded access pattern (mirrors the gtceu integration above).
     modCompileOnly 'local:phoenix_guilds:0.1.0'
     modRuntimeOnly 'local:phoenix_guilds:0.1.0'
+
+    // Optional camouflage-block map-color integrations — none of these three are required to
+    // run Solaris, only to render what a camouflaged/materially-textured block is actually
+    // displaying instead of its own undefined placeholder color. See integration.framedblocks /
+    // integration.copycats / integration.domumornamentum for the isAvailable()-guarded access
+    // pattern (mirrors the gtceu integration above).
+    modCompileOnly("maven.modrinth:framedblocks:9.4.3") { transitive = false }
+    modRuntimeOnly("maven.modrinth:framedblocks:9.4.3") { transitive = false }
+
+    // Copycats' own ICopycatBlockEntity interface extends several Create interfaces (which
+    // themselves reach into Flywheel/Registrate/Catnip) — javac needs that whole chain
+    // resolvable just to type-check a call to ICopycatBlockEntity's own methods, even though
+    // none of it is actually used. Reflection (see integration.copycats) sidesteps needing any
+    // of that on the compile classpath at all — no compileOnly dependency here, matching
+    // GtceuIntegration's own reflection-based access to a third-party private field. Kept as a
+    // dev-environment-only runtime dependency so integration.copycats is actually exercisable
+    // via ./gradlew runClient; real users' modpacks bring their own Copycats jar.
+    modRuntimeOnly("maven.modrinth:copycats:3.0.7+mc.1.20.1-forge") { transitive = false }
+
+    modCompileOnly("com.ldtteam:domum_ornamentum:1.20.1-1.0.296:api") { transitive = false }
+    modRuntimeOnly("com.ldtteam:domum_ornamentum:1.20.1-1.0.296:universal") { transitive = false }
 
     // lombok
     compileOnly 'org.projectlombok:lombok:1.18.24'

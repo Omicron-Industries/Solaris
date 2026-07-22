@@ -15,13 +15,6 @@ import java.util.List;
 
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_TEXT;
 
-/**
- * Small HUD arrow + distance pointing toward the tracked waypoint (or the nearest one in the
- * current dimension if nothing is explicitly tracked), so a waypoint can be navigated to
- * without opening the fullscreen map. Reuses {@link PlayerArrow}'s south-pointing rotation
- * technique — here the rotation is the bearing to the target relative to the player's own
- * yaw, rather than the player's yaw itself.
- */
 @Mod.EventBusSubscriber(modid = PhoenixSolaris.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public class WaypointCompassOverlay {
 
@@ -31,8 +24,7 @@ public class WaypointCompassOverlay {
         if (!SolarisConfig.WAYPOINT_COMPASS.get()) return;
 
         Minecraft mc = Minecraft.getInstance();
-        // Forge still fires hotbar-overlay events while a Screen is open — without this check
-        // this HUD compass rendered behind/through Solaris's own screens too.
+
         if (mc.player == null || mc.level == null || mc.options.hideGui || mc.screen != null) return;
 
         Waypoint target = WaypointManager.getTracked();

@@ -8,7 +8,6 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.phoenixvine.solaris.PhoenixSolaris;
 import net.phoenixvine.solaris.api.SolarisAPI;
-import net.phoenixvine.solaris.api.SolarisFeatureState;
 import net.phoenixvine.solaris.client.render.MinimapStyle;
 import net.phoenixvine.solaris.client.waypoint.Waypoint;
 import net.phoenixvine.solaris.client.waypoint.WaypointManager;
@@ -29,21 +28,12 @@ public class SolarisClientTickHandler {
 
         while (SolarisKeybinds.OPEN_MAP.consumeClick()) {
             if (mc.screen != null) continue;
-            boolean gatesOpen = SolarisAPI.isFeatureEnabled(SolarisAPI.FEATURE_FULLSCREEN_MAP,
-                    mc.level.dimension().location()) &&
-                    SolarisAPI.getFeatureState(SolarisAPI.FEATURE_WORLD_MAP, mc.level.dimension().location())
-                            .atLeast(SolarisFeatureState.VISIBLE);
-            if (gatesOpen) {
-                mc.setScreen(new SolarisMapScreen());
-            } else {
+
+            if (!SolarisAPI.openMap()) {
                 mc.player.displayClientMessage(Component.literal("The map isn't available right now."), true);
             }
         }
 
-        // Instant-saves at the player's exact position rather than opening a form to fill out
-        // first — a keybind pressed mid-gameplay shouldn't interrupt it with a modal. Everything
-        // the form used to ask for up front (name, color, icon, coords) is editable afterward
-        // from the Waypoints list instead.
         while (SolarisKeybinds.NEW_WAYPOINT.consumeClick()) {
             if (!WaypointManager.canPlace(mc.level.dimension().location())) {
                 mc.player.displayClientMessage(Component.literal("Waypoints aren't available here."), true);

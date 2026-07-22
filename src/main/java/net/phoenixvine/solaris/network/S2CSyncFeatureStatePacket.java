@@ -13,22 +13,11 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
 
-/**
- * Pushes a player's server-persisted progression tiers, feature flags, and (team-shared, see
- * {@code SolarisServerAPI#setFeatureState}) {@link SolarisFeatureState}s down to their own
- * client, applying them onto the exact same client-side state {@link SolarisAPI#setTier}/{@link
- * SolarisAPI#setFeatureEnabled}/{@link SolarisAPI#setFeatureState} already maintain — a mod
- * calling the server-side API doesn't need to know or care that this packet exists at all, it's
- * purely the plumbing that makes a server-authoritative call show up on the right client. Sent
- * once on login (a full snapshot) and again on every subsequent server-side change — including to
- * every other online teammate when a {@link SolarisFeatureState} changes, not just the player who
- * triggered it.
- */
 public class S2CSyncFeatureStatePacket {
 
     private final Map<String, Integer> tiers;
     private final Map<String, Boolean> features;
-    /** dimension (as string) -> featureId -> state. */
+
     private final Map<String, Map<String, SolarisFeatureState>> states;
 
     public S2CSyncFeatureStatePacket(Map<String, Integer> tiers, Map<String, Boolean> features,

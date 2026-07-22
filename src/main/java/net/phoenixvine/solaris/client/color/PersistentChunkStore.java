@@ -24,32 +24,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
-/**
- * Remembers sampled chunk color/height/water data to disk, per world+dimension, so already
- * -explored areas keep showing on the map after they fall out of {@link ChunkColorCache}'s
- * in-memory LRU bound or the player leaves render distance and comes back next session — the
- * "gray far-away chunks" report earlier turned out to be exactly that gap (nothing remembered
- * explored terrain beyond the in-memory working set at all).
- *
- * Deliberately <b>not</b> modeled on how map mods like JourneyMap persist explored area — that
- * approach (one growing image tile per region, kept forever) is the specific thing that balloons
- * on a long-lived world. Instead: a compact binary format (four packed ints per pixel column, not
- * an image), gzip-compressed, one file per dimension, and — the actual anti-ballooning
- * mechanism — a hard cap ({@link SolarisConfig#MAX_PERSISTED_CHUNKS_PER_DIMENSION}) enforced on
- * every save by evicting the least-recently-touched chunks first, same LRU idea already used for
- * the in-memory cache. Total disk usage per dimension is therefore a known, fixed bound, not an
- * ever-growing one.
- *
- * Loading is fully asynchronous and never blocks the render thread: the first {@link #get} for a
- * dimension this session kicks off a background read and returns {@code null} (same as a cache
- * miss) until it completes, at which point {@link SolarisTexture#invalidateAll()} forces open
- * maps to redraw with the newly-available data. Saving is periodic (piggybacked on {@link
- * LiveChunkRefresh}'s tick) and also runs entirely off the render thread.
- */
 public final class PersistentChunkStore {
 
-    private static final int MAGIC = 0x534F4C41; // "SOLA"
-    private static final int VERSION = 1;
+    private static final int MAGIC = 0x534F4C41;
+
+    private static final int VERSION = 4;
 
     private PersistentChunkStore() {}
 
@@ -58,12 +37,21 @@ public final class PersistentChunkStore {
         final int[] pixels;
         final int[] heights;
         final boolean[] water;
+        final int[] waterTint;
+        final int[] waterDepth;
+        final boolean[] waterOcean;
+        final boolean[] foliage;
         volatile long lastAccessMillis;
 
-        Entry(int[] pixels, int[] heights, boolean[] water, long lastAccessMillis) {
+        Entry(int[] pixels, int[] heights, boolean[] water, int[] waterTint, int[] waterDepth,
+              boolean[] waterOcean, boolean[] foliage, long lastAccessMillis) {
             this.pixels = pixels;
             this.heights = heights;
             this.water = water;
+            this.waterTint = waterTint;
+            this.waterDepth = waterDepth;
+            this.waterOcean = waterOcean;
+            this.foliage = foliage;
             this.lastAccessMillis = lastAccessMillis;
         }
 
@@ -78,6 +66,26 @@ public final class PersistentChunkStore {
         public boolean[] water() {
             return water;
         }
+
+        public int[] waterTint() {
+            return waterTint;
+        }
+
+        public int[] waterDepth() {
+            return waterDepth;
+        }
+
+        public boolean[] waterOcean() {
+            return waterOcean;
+        }
+
+        public boolean[] foliage() {
+            return foliage;
+        }
+
+        public void touch() {
+            lastAccessMillis = System.currentTimeMillis();
+        }
     }
 
     private static final Map<String, ConcurrentHashMap<ChunkKey, Entry>> DIMENSIONS = new ConcurrentHashMap<>();
@@ -85,33 +93,43 @@ public final class PersistentChunkStore {
     private static final Set<String> DIRTY_DIMENSIONS = ConcurrentHashMap.newKeySet();
     private static String loadedWorldKey = null;
 
-    /** Returns the persisted entry for {@code key}, or {@code null} if never persisted (or still loading). */
     public static Entry get(ChunkKey key) {
-        String dimension = key.dimension().toString();
-        ensureLoading(dimension);
-
-        ConcurrentHashMap<ChunkKey, Entry> chunks = DIMENSIONS.get(dimension);
+        ConcurrentHashMap<ChunkKey, Entry> chunks = chunksFor(key.dimension().toString());
         if (chunks == null) return null;
         Entry entry = chunks.get(key);
         if (entry != null) entry.lastAccessMillis = System.currentTimeMillis();
         return entry;
     }
 
-    /** Records a freshly-sampled chunk. Cheap — a plain map write, no I/O on this thread. */
-    public static void put(ChunkKey key, int[] pixels, int[] heights, boolean[] water) {
+    public static ConcurrentHashMap<ChunkKey, Entry> chunksFor(String dimension) {
+        ensureLoading(dimension);
+        return DIMENSIONS.get(dimension);
+    }
+
+    public static Map<ChunkKey, Entry> snapshot(String dimension) {
+        ensureLoading(dimension);
+        ConcurrentHashMap<ChunkKey, Entry> chunks = DIMENSIONS.get(dimension);
+        return chunks == null ? Map.of() : Map.copyOf(chunks);
+    }
+
+    public static boolean isLoaded(String dimension) {
+
+        ensureLoading(dimension);
+        return DIMENSIONS.containsKey(dimension);
+    }
+
+    public static void put(ChunkKey key, int[] pixels, int[] heights, boolean[] water, int[] waterTint,
+                           int[] waterDepth, boolean[] waterOcean, boolean[] foliage) {
         String dimension = key.dimension().toString();
         ensureLoading(dimension);
 
         ConcurrentHashMap<ChunkKey, Entry> chunks = DIMENSIONS.computeIfAbsent(dimension,
                 d -> new ConcurrentHashMap<>());
-        chunks.put(key, new Entry(pixels, heights, water, System.currentTimeMillis()));
+        chunks.put(key, new Entry(pixels, heights, water, waterTint, waterDepth, waterOcean, foliage,
+                System.currentTimeMillis()));
         DIRTY_DIMENSIONS.add(dimension);
     }
 
-    /**
-     * Kicks off an async save for every dimension with unsaved changes. Safe to call often — a no-op when nothing's
-     * dirty.
-     */
     public static void saveDirtyAsync() {
         String worldKey = WaypointManager.currentWorldKey();
         if (worldKey == null || DIRTY_DIMENSIONS.isEmpty()) return;
@@ -125,12 +143,6 @@ public final class PersistentChunkStore {
         }
     }
 
-    /**
-     * A new world/server means a completely different set of chunks means nothing here is valid
-     * anymore — clears in-memory state so the next {@link #get}/{@link #put} lazily reloads (or
-     * starts fresh) for wherever the player just went, mirroring {@code WaypointManager}'s own
-     * per-world reset.
-     */
     private static void ensureLoading(String dimension) {
         String worldKey = WaypointManager.currentWorldKey();
         if (worldKey == null) return;
@@ -159,7 +171,15 @@ public final class PersistentChunkStore {
 
         try (DataInputStream in = new DataInputStream(
                 new GZIPInputStream(new BufferedInputStream(Files.newInputStream(file))))) {
-            if (in.readInt() != MAGIC || in.readInt() != VERSION) return loaded;
+            int magic = in.readInt();
+            int version = in.readInt();
+            if (magic != MAGIC || version != VERSION) {
+                PhoenixSolaris.LOGGER.warn(
+                        "[Solaris] Discarding persisted map data for {} — found format version {} on disk, " +
+                                "expected {} (magic {})",
+                        dimension, version, VERSION, magic == MAGIC ? "ok" : "MISMATCH");
+                return loaded;
+            }
 
             int count = in.readInt();
             ResourceLocation dimLoc = new ResourceLocation(dimension);
@@ -179,8 +199,29 @@ public final class PersistentChunkStore {
                         water[p + bit] = (packed & (1 << bit)) != 0;
                     }
                 }
-                loaded.put(new ChunkKey(dimLoc, x, z), new Entry(pixels, heights, water, lastAccess));
+                int[] waterTint = new int[256];
+                for (int p = 0; p < 256; p++) waterTint[p] = in.readInt();
+                int[] waterDepth = new int[256];
+                for (int p = 0; p < 256; p++) waterDepth[p] = in.readInt();
+                boolean[] waterOcean = new boolean[256];
+                for (int p = 0; p < 256; p += 8) {
+                    int packed = in.readUnsignedByte();
+                    for (int bit = 0; bit < 8 && p + bit < 256; bit++) {
+                        waterOcean[p + bit] = (packed & (1 << bit)) != 0;
+                    }
+                }
+                boolean[] foliage = new boolean[256];
+                for (int p = 0; p < 256; p += 8) {
+                    int packed = in.readUnsignedByte();
+                    for (int bit = 0; bit < 8 && p + bit < 256; bit++) {
+                        foliage[p + bit] = (packed & (1 << bit)) != 0;
+                    }
+                }
+                loaded.put(new ChunkKey(dimLoc, x, z),
+                        new Entry(pixels, heights, water, waterTint, waterDepth, waterOcean, foliage, lastAccess));
             }
+            PhoenixSolaris.LOGGER.info("[Solaris] Loaded {} persisted chunk(s) for {} from disk", loaded.size(),
+                    dimension);
         } catch (IOException e) {
             PhoenixSolaris.LOGGER.warn("Failed to load Solaris persisted map data for {}", dimension, e);
         }
@@ -194,7 +235,6 @@ public final class PersistentChunkStore {
         if (entries.size() > cap) {
             entries.sort(Comparator.comparingLong(e -> e.getValue().lastAccessMillis));
             int toEvict = entries.size() - cap;
-            for (int i = 0; i < toEvict; i++) chunks.remove(entries.get(i).getKey());
             entries = entries.subList(toEvict, entries.size());
         }
 
@@ -221,8 +261,26 @@ public final class PersistentChunkStore {
                         }
                         out.writeByte(packed);
                     }
+                    for (int t : entry.waterTint) out.writeInt(t);
+                    for (int d : entry.waterDepth) out.writeInt(d);
+                    for (int p = 0; p < 256; p += 8) {
+                        int packed = 0;
+                        for (int bit = 0; bit < 8 && p + bit < 256; bit++) {
+                            if (entry.waterOcean[p + bit]) packed |= 1 << bit;
+                        }
+                        out.writeByte(packed);
+                    }
+                    for (int p = 0; p < 256; p += 8) {
+                        int packed = 0;
+                        for (int bit = 0; bit < 8 && p + bit < 256; bit++) {
+                            if (entry.foliage[p + bit]) packed |= 1 << bit;
+                        }
+                        out.writeByte(packed);
+                    }
                 }
             }
+            PhoenixSolaris.LOGGER.info("[Solaris] Saved {} persisted chunk(s) for {} to disk ({} in memory)",
+                    entries.size(), dimension, chunks.size());
         } catch (IOException e) {
             PhoenixSolaris.LOGGER.warn("Failed to save Solaris persisted map data for {}", dimension, e);
         }
@@ -231,6 +289,6 @@ public final class PersistentChunkStore {
     private static Path fileFor(String worldKey, String dimension) {
         String safeWorld = worldKey.replaceAll("[^a-zA-Z0-9._-]", "_");
         String safeDimension = dimension.replaceAll("[^a-zA-Z0-9._-]", "_");
-        return Paths.get("config", "phoenix_solaris", "mapdata", safeWorld, safeDimension + ".dat");
+        return Paths.get("config", "solaris", "mapdata", safeWorld, safeDimension + ".dat");
     }
 }

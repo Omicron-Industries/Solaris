@@ -9,12 +9,6 @@ import net.phoenixvine.solaris.client.waypoint.WaypointManager;
 
 import java.util.function.Supplier;
 
-/**
- * Server-triggered waypoint removal ({@code SolarisServerAPI#removeWaypoint}) — by name, not id,
- * since the server never tracked the client-generated {@code Waypoint#id}. Removes even a locked
- * waypoint; {@code Waypoint#locked} only restricts the player's own Delete button, not an
- * admin/scripted server action.
- */
 public class S2CRemoveWaypointPacket {
 
     private final String name;

@@ -14,12 +14,6 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * In-memory plan-shape list, lazily (re)loaded whenever the current world/server changes — same
- * shape as {@link WaypointManager}, reusing its {@link WaypointManager#currentWorldKey()} rather
- * than duplicating the server-address/save-path logic, since shapes are scoped to a world the
- * exact same way waypoints are.
- */
 public final class PlanShapeManager {
 
     private PlanShapeManager() {}
@@ -87,6 +81,6 @@ public final class PlanShapeManager {
 
     private static Path fileFor(String worldKey) {
         String safe = worldKey.replaceAll("[^a-zA-Z0-9._-]", "_");
-        return Paths.get("config", "phoenix_solaris", "shapes", safe + ".json");
+        return Paths.get("config", "solaris", "shapes", safe + ".json");
     }
 }

@@ -18,11 +18,6 @@ import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_ACCENT;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_DIM;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_PANEL;
 
-/**
- * The "name and save" popup shown right after finishing drawing a shape — same role
- * {@code QuickWaypointScreen} plays for waypoints, same structure (renders the map dimmed
- * behind itself, hex-color swatches, {@code EditBox} fields, Save/Cancel).
- */
 @OnlyIn(Dist.CLIENT)
 public class QuickPlanShapeScreen extends Screen {
 

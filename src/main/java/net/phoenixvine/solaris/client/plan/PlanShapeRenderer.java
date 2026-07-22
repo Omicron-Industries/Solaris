@@ -19,25 +19,11 @@ import org.joml.Matrix4f;
 
 import java.util.List;
 
-/**
- * Draws each planned shape as an in-world wireframe outline — the actual payoff of the shape
- * planner: seeing a build's footprint and height in the real world before placing a single real
- * block, instead of test-building with wool. Structurally mirrors {@code WaypointBeamRenderer}
- * (same event stage, same camera-relative {@code PoseStack} push, one shared {@code
- * RenderType.lines()} batch, same range-limiting idea).
- *
- * Rectangle reuses {@link LevelRenderer#renderLineBox} directly — a rectangle plan shape's
- * wireframe IS a box, no new geometry needed. Circle and line have no vanilla box-shaped
- * equivalent, so they're hand-built from individual line segments, using the exact vertex chain
- * {@code renderLineBox} itself uses internally (verified against decompiled source rather than
- * guessed): {@code consumer.vertex(matrix4f, x, y, z).color(r, g, b, a).normal(matrix3f, nx, ny,
- * nz).endVertex()}, two vertices per segment.
- */
 @Mod.EventBusSubscriber(modid = PhoenixSolaris.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public class PlanShapeRenderer {
 
     private static final int CIRCLE_SEGMENTS = 32;
-    /** Every Nth circle segment also gets a vertical strut connecting the top/bottom rings. */
+
     private static final int STRUT_INTERVAL = 4;
     private static final float ALPHA = 0.8f;
 
@@ -128,10 +114,6 @@ public class PlanShapeRenderer {
         }
     }
 
-    /**
-     * The path's own points at both heights (reads as an outlined "wall" following the drawn path), plus vertical
-     * struts.
-     */
     private static void renderLine(PoseStack poseStack, VertexConsumer lines, PlanShape shape, float r, float g,
                                    float b) {
         Matrix4f matrix4f = poseStack.last().pose();

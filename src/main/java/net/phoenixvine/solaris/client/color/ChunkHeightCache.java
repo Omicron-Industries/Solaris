@@ -6,12 +6,6 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * Bounded, LRU-evicted cache of sampled chunk surface-height arrays — the globe's terrain
- * relief data. Kept as its own cache rather than folded into {@link ChunkColorCache} so the
- * already carefully-tuned color sampler didn't need touching to add this; same shape,
- * populated alongside it by {@link ChunkColorEvents}.
- */
 public final class ChunkHeightCache {
 
     private ChunkHeightCache() {}

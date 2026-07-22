@@ -23,13 +23,6 @@ import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_ACCENT;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_HEADER;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_PANEL;
 
-/**
- * Lets a waypoint use ANY item or block's real icon as its marker, searched by name, instead
- * of only the fixed handful of hand-picked items ({@code WaypointIcon} used to hardcode iron
- * tools directly). Every item registered with Forge ({@link ForgeRegistries#ITEMS}) is a
- * candidate — scanned once and cached, since it's a few thousand entries and doesn't change
- * mid-session.
- */
 @OnlyIn(Dist.CLIENT)
 public class WaypointItemPickerScreen extends Screen {
 

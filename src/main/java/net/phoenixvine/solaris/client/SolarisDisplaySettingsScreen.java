@@ -23,49 +23,18 @@ import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_BORDER2;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_DIM;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_HEADER;
 
-/**
- * The map's settings popup — reachable from the fullscreen map's right-click menu, so
- * there's one obvious place for the tunables that don't fit the theme editor's color-field
- * model. Split into JourneyMap-style tabs (a row of buttons at the bottom of the panel, not
- * the top — this settings list had grown to 10 rows in one flat column before this) rather
- * than one long scrolling list: Display (terrain/water rendering, icons, tooltip), Waypoints
- * (beams, compass, death markers), and Integrations (GT ore veins — only shown when GTCEu is
- * actually installed). All backed by {@link SolarisConfig} ({@code ForgeConfigSpec} values
- * previously only reachable by hand-editing {@code config/phoenix_solaris-client.toml}).
- * Every water/saturation control applies immediately via {@link SolarisTexture#invalidateAll()}
- * so previewing a change doesn't require reopening the map. Dims/blurs the world behind it
- * despite not pausing — an earlier version skipped that to read as a floating widget, but it
- * left the panel with too little contrast against a bright/busy world to read comfortably.
- *
- * Chrome matches {@link SolarisMapScreen}/{@code WaypointListScreen}'s visual language ({@link
- * ModernPanel} flat border + a filled header band) instead of the older beveled {@code
- * VanillaPanel} look this screen used to have on its own. The Display tab lays its twelve
- * controls out in two columns (two rows per group) instead of one long column of ten rows —
- * a single narrow column that tall against a fixed, comparatively small width read as visually
- * top-heavy/unstable ("about to topple") rather than a settled panel; two columns roughly halves
- * the height for a squarer, steadier-looking box at a slightly wider width. Grouped into three
- * labeled sections (Terrain &amp; Water / Icons &amp; Labels / Effects) with a thin divider
- * above each — purely a rendering addition, the row layout/click targets underneath are
- * untouched, so grouping can't introduce a hitbox bug.
- */
 @OnlyIn(Dist.CLIENT)
 public class SolarisDisplaySettingsScreen extends Screen {
 
-    private static final int BOX_W = 300;
+    private static final int BOX_W = 420;
     private static final int ROW_H = 24;
     private static final int HEADER_H = 24;
-    // Fixed regardless of which tab is active (the Display tab, the tallest, needs this many) —
-    // keeps the panel a constant size across tab switches instead of resizing/jumping around.
-    // The Display tab lays its content out 2 columns wide, so this is grid rows, not control
-    // count (12 controls / 2 columns = 6).
-    private static final int DISPLAY_GRID_ROWS = 6;
-    // Reserved space for a small caps heading + divider line above each of the Display tab's
-    // three groups. Baked into every tab's shared boxH (not just Display's) for the same
-    // constant-size-across-tabs reason DISPLAY_GRID_ROWS already is — the two shorter tabs just
-    // end up with a little extra bottom padding instead of the panel resizing when you switch.
+
+    private static final int DISPLAY_GRID_ROWS = 10;
+
     private static final int HEADING_H = 12;
-    private static final int GROUP_COUNT = 3;
-    private static final String[] GROUP_HEADINGS = { "TERRAIN & WATER", "ICONS & LABELS", "EFFECTS" };
+    private static final int GROUP_COUNT = 4;
+    private static final String[] GROUP_HEADINGS = { "TERRAIN & WATER", "ICONS & LABELS", "EFFECTS", "MINIMAP & GRID" };
 
     private enum Tab {
 
@@ -83,7 +52,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
     private final Screen parent;
     private Tab activeTab = Tab.DISPLAY;
     private int boxH;
-    /** Y positions of the Display tab's 3 group headings, set by {@link #initDisplayTab}; unused on other tabs. */
+
     private final int[] headingY = new int[GROUP_COUNT];
 
     public SolarisDisplaySettingsScreen(Screen parent) {
@@ -102,18 +71,14 @@ public class SolarisDisplaySettingsScreen extends Screen {
     @Override
     protected void init() {
         clearWidgets();
-        // Keeps the backgrounded map screen's own width/height in sync — vanilla only calls
-        // resize()/init() on the ACTIVE screen when the window resizes, so the parent would
-        // otherwise silently go stale (e.g. after toggling fullscreen) until it becomes active
-        // again. Same fix as QuickWaypointScreen's.
+
         if (parent != null) {
             Minecraft mc = Minecraft.getInstance();
             parent.resize(mc, mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());
         }
 
         boolean showIntegrationsTab = GtceuIntegration.isAvailable();
-        // Header + fixed content area + 3 group-heading gaps + tab bar row + preset row + close
-        // row + bottom padding.
+
         boxH = HEADER_H + DISPLAY_GRID_ROWS * ROW_H + GROUP_COUNT * HEADING_H + 22 + 22 + 22 + 8;
 
         int x = boxX();
@@ -136,9 +101,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
         int tabW = (BOX_W - 20) / tabs.size();
         for (int i = 0; i < tabs.size(); i++) {
             Tab tab = tabs.get(i);
-            // A leading marker (rather than a custom-colored background — vanilla Button always
-            // paints its own opaque background over anything drawn underneath it) is the cheap,
-            // safe way to show which tab is active without touching Button's rendering.
+
             String label = (tab == activeTab ? "» " : "") + tab.label;
             addRenderableWidget(Button.builder(Component.literal(label), b -> {
                 activeTab = tab;
@@ -151,9 +114,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
                 b -> Minecraft.getInstance().setScreen(new SolarisPresetSaveScreen(this, () -> {})))
                 .bounds(x + 10, tabBarY + 24, presetHalfW, 18).build());
         addRenderableWidget(Button.builder(Component.literal("Load Preset"),
-                // Widgets refresh automatically — Minecraft#setScreen re-inits whatever screen
-                // becomes active, including navigating back to this same one. Only the terrain
-                // texture itself needs an explicit nudge to pick up the newly-loaded values.
+
                 b -> Minecraft.getInstance()
                         .setScreen(new SolarisPresetLoadScreen(this, SolarisTexture::invalidateAll)))
                 .bounds(x + 10 + presetHalfW + 6, tabBarY + 24, presetHalfW, 18).build());
@@ -162,75 +123,86 @@ public class SolarisDisplaySettingsScreen extends Screen {
                 .bounds(x + 10, tabBarY + 48, BOX_W - 20, 18).build());
     }
 
-    /**
-     * Two columns of controls, two rows per group — see the class doc for why (a single 10-row
-     * column at this panel's width read as visually unstable). {@code leftX}/{@code rightX} are
-     * each control's full column width; sliders and toggle buttons both accept a plain width, so
-     * no widget-specific handling is needed to fit either into a column.
-     */
     private void initDisplayTab(int x, int y) {
-        int colW = (BOX_W - 20 - 10) / 2;
-        int leftX = x + 10;
-        int rightX = leftX + colW + 10;
+        int colW = (BOX_W - 20 - 20) / 3;
+        int col1X = x + 10;
+        int col2X = col1X + colW + 10;
+        int col3X = col2X + colW + 10;
 
-        // Group 1: "Terrain & Water" — saturation, water opacity/blending, deep-water-only.
         headingY[0] = y;
         y += HEADING_H;
 
-        addRenderableWidget(new SaturationSlider(leftX, y, colW, 20));
-        addRenderableWidget(new WaterOpacitySlider(rightX, y, colW, 20));
+        addRenderableWidget(new SaturationSlider(col1X, y, colW, 20));
+        addRenderableWidget(new WaterOpacitySlider(col2X, y, colW, 20));
+        addRenderableWidget(new BiomeBlendSlider(col3X, y, colW, 20));
         y += ROW_H;
 
-        addRenderableWidget(new BiomeBlendSlider(leftX, y, colW, 20));
         addRenderableWidget(Button.builder(deepOnlyLabel(), b -> {
             SolarisConfig.WATER_DEEP_ONLY.set(!SolarisConfig.WATER_DEEP_ONLY.get());
             b.setMessage(deepOnlyLabel());
             SolarisTexture.invalidateAll();
-        }).bounds(rightX, y, colW, 18).build());
+        }).bounds(col1X, y, colW, 18).build());
+        addRenderableWidget(new ContrastSlider(col2X, y, colW, 20));
+        addRenderableWidget(new BrightnessSlider(col3X, y, colW, 20));
         y += ROW_H;
 
-        // Group 2: "Icons & Labels" — waypoint icon size, tooltip/mob visibility, label position.
+        addRenderableWidget(new FoliageBrightnessSlider(col1X, y, colW, 20));
+        y += ROW_H;
+
         headingY[1] = y;
         y += HEADING_H;
 
-        addRenderableWidget(new IconScaleSlider(leftX, y, colW, 20));
+        addRenderableWidget(new IconScaleSlider(col1X, y, colW, 20));
         addRenderableWidget(Button.builder(labelSideLabel(), b -> {
             SolarisConfig.LABEL_SIDE.set(SolarisConfig.LABEL_SIDE.get().next());
             b.setMessage(labelSideLabel());
-        }).bounds(rightX, y, colW, 18).build());
-        y += ROW_H;
-
+        }).bounds(col2X, y, colW, 18).build());
         addRenderableWidget(Button.builder(tooltipLabel(), b -> {
             SolarisConfig.SHOW_BLOCK_TOOLTIP.set(!SolarisConfig.SHOW_BLOCK_TOOLTIP.get());
             b.setMessage(tooltipLabel());
-        }).bounds(leftX, y, colW, 18).build());
-        addRenderableWidget(Button.builder(mobsLabel(), b -> {
-            SolarisConfig.SHOW_MOBS.set(!SolarisConfig.SHOW_MOBS.get());
-            b.setMessage(mobsLabel());
-        }).bounds(rightX, y, colW, 18).build());
+        }).bounds(col3X, y, colW, 18).build());
         y += ROW_H;
 
-        // Group 3: "Effects" — hillshading, minimap rotation, rail-line overlay.
         headingY[2] = y;
         y += HEADING_H;
 
-        addRenderableWidget(Button.builder(hillshadingLabel(), b -> {
-            SolarisConfig.HILLSHADING.set(!SolarisConfig.HILLSHADING.get());
-            b.setMessage(hillshadingLabel());
-            SolarisTexture.invalidateAll();
-        }).bounds(leftX, y, colW, 18).build());
-        addRenderableWidget(new HillshadingStrengthSlider(rightX, y, colW, 20));
-        y += ROW_H;
+        addRenderableWidget(Button.builder(mapShapeLabel(), b -> {
+            SolarisConfig.MAP_SHAPE.set(SolarisConfig.MAP_SHAPE.get().next());
+            b.setMessage(mapShapeLabel());
+        }).bounds(col1X, y, colW, 18).build());
 
+        addRenderableWidget(new HillshadingStrengthSlider(col2X, y, colW, 20));
         addRenderableWidget(Button.builder(minimapRotateLabel(), b -> {
             SolarisConfig.MINIMAP_ROTATE.set(!SolarisConfig.MINIMAP_ROTATE.get());
             b.setMessage(minimapRotateLabel());
-        }).bounds(leftX, y, colW, 18).build());
+        }).bounds(col3X, y, colW, 18).build());
+        y += ROW_H;
+
         addRenderableWidget(Button.builder(railNetworkLabel(), b -> {
             SolarisConfig.SHOW_RAIL_NETWORK.set(!SolarisConfig.SHOW_RAIL_NETWORK.get());
             b.setMessage(railNetworkLabel());
             SolarisTexture.invalidateAll();
-        }).bounds(rightX, y, colW, 18).build());
+        }).bounds(col1X, y, colW, 18).build());
+        y += ROW_H;
+
+        addRenderableWidget(new VignetteStrengthSlider(col2X, y, colW, 20));
+        y += ROW_H;
+
+        headingY[3] = y;
+        y += HEADING_H;
+
+        addRenderableWidget(new MinimapZoomSlider(col1X, y, colW, 20));
+
+        addRenderableWidget(Button.builder(minimapTimeLabel(), b -> {
+            SolarisConfig.MINIMAP_SHOW_TIME.set(!SolarisConfig.MINIMAP_SHOW_TIME.get());
+            b.setMessage(minimapTimeLabel());
+        }).bounds(col3X, y, colW, 18).build());
+        y += ROW_H;
+
+        addRenderableWidget(Button.builder(minimapCoordsLabel(), b -> {
+            SolarisConfig.MINIMAP_SHOW_COORDS.set(!SolarisConfig.MINIMAP_SHOW_COORDS.get());
+            b.setMessage(minimapCoordsLabel());
+        }).bounds(col1X, y, colW, 18).build());
     }
 
     private void initWaypointsTab(int x, int y) {
@@ -275,11 +247,6 @@ public class SolarisDisplaySettingsScreen extends Screen {
         return Component.literal("Plan Shapes: " + (on ? "ON" : "OFF"));
     }
 
-    private Component mobsLabel() {
-        boolean on = SolarisConfig.SHOW_MOBS.get();
-        return Component.literal("Mobs: " + (on ? "ON" : "OFF"));
-    }
-
     private Component gtVeinsLabel() {
         boolean on = SolarisConfig.SHOW_GT_ORE_VEINS.get();
         return Component.literal("GT Ore Veins: " + (on ? "ON" : "OFF"));
@@ -295,9 +262,8 @@ public class SolarisDisplaySettingsScreen extends Screen {
         return Component.literal("Label Position: " + SolarisConfig.LABEL_SIDE.get().label());
     }
 
-    private Component hillshadingLabel() {
-        boolean on = SolarisConfig.HILLSHADING.get();
-        return Component.literal("Hillshading: " + (on ? "ON (heavier)" : "OFF"));
+    private Component mapShapeLabel() {
+        return Component.literal("Map Shape: " + SolarisConfig.MAP_SHAPE.get().label());
     }
 
     private Component minimapRotateLabel() {
@@ -308,6 +274,16 @@ public class SolarisDisplaySettingsScreen extends Screen {
     private Component railNetworkLabel() {
         boolean on = SolarisConfig.SHOW_RAIL_NETWORK.get();
         return Component.literal("Rail Lines: " + (on ? "ON" : "OFF"));
+    }
+
+    private Component minimapTimeLabel() {
+        boolean on = SolarisConfig.MINIMAP_SHOW_TIME.get();
+        return Component.literal("Minimap Time: " + (on ? "ON" : "OFF"));
+    }
+
+    private Component minimapCoordsLabel() {
+        boolean on = SolarisConfig.MINIMAP_SHOW_COORDS.get();
+        return Component.literal("Minimap Coords: " + (on ? "ON" : "OFF"));
     }
 
     private Component beamsLabel() {
@@ -356,6 +332,9 @@ public class SolarisDisplaySettingsScreen extends Screen {
     @Override
     public void onClose() {
         SolarisConfig.SATURATION.save();
+        SolarisConfig.CONTRAST.save();
+        SolarisConfig.BRIGHTNESS.save();
+        SolarisConfig.FOLIAGE_BRIGHTNESS.save();
         SolarisConfig.WATER_OPACITY.save();
         SolarisConfig.WATER_BLEND_RADIUS.save();
         SolarisConfig.WATER_DEEP_ONLY.save();
@@ -364,14 +343,21 @@ public class SolarisDisplaySettingsScreen extends Screen {
         SolarisConfig.SHOW_MOBS.save();
         SolarisConfig.SHOW_GT_ORE_VEINS.save();
         SolarisConfig.LABEL_SIDE.save();
+        SolarisConfig.MAP_SHAPE.save();
         SolarisConfig.WAYPOINT_BEAMS.save();
         SolarisConfig.WAYPOINT_COMPASS.save();
         SolarisConfig.DEATH_MARKERS.save();
         SolarisConfig.SHOW_PLAN_SHAPES.save();
         SolarisConfig.HILLSHADING.save();
         SolarisConfig.HILLSHADING_STRENGTH.save();
+        SolarisConfig.VIGNETTE.save();
+        SolarisConfig.VIGNETTE_STRENGTH.save();
         SolarisConfig.MINIMAP_ROTATE.save();
         SolarisConfig.SHOW_RAIL_NETWORK.save();
+        SolarisConfig.MINIMAP_ZOOM.save();
+        SolarisConfig.SHOW_CHUNK_GRID.save();
+        SolarisConfig.MINIMAP_SHOW_TIME.save();
+        SolarisConfig.MINIMAP_SHOW_COORDS.save();
         Minecraft.getInstance().setScreen(parent);
     }
 
@@ -383,7 +369,6 @@ public class SolarisDisplaySettingsScreen extends Screen {
     private static class SaturationSlider extends AbstractSliderButton {
 
         SaturationSlider(int x, int y, int w, int h) {
-            // AbstractSliderButton's value is normalized 0..1; saturation's real range is 0..2.
             super(x, y, w, h, Component.empty(), SolarisConfig.SATURATION.get() / 2.0);
             updateMessage();
         }
@@ -396,6 +381,63 @@ public class SolarisDisplaySettingsScreen extends Screen {
         @Override
         protected void applyValue() {
             SolarisConfig.SATURATION.set(value * 2.0);
+            SolarisTexture.invalidateAll();
+        }
+    }
+
+    private static class ContrastSlider extends AbstractSliderButton {
+
+        ContrastSlider(int x, int y, int w, int h) {
+            super(x, y, w, h, Component.empty(), SolarisConfig.CONTRAST.get() / 3.0);
+            updateMessage();
+        }
+
+        @Override
+        protected void updateMessage() {
+            setMessage(Component.literal("Contrast: " + Math.round(value * 300) + "%"));
+        }
+
+        @Override
+        protected void applyValue() {
+            SolarisConfig.CONTRAST.set(value * 3.0);
+            SolarisTexture.invalidateAll();
+        }
+    }
+
+    private static class BrightnessSlider extends AbstractSliderButton {
+
+        BrightnessSlider(int x, int y, int w, int h) {
+            super(x, y, w, h, Component.empty(), SolarisConfig.BRIGHTNESS.get() / 2.0);
+            updateMessage();
+        }
+
+        @Override
+        protected void updateMessage() {
+            setMessage(Component.literal("Brightness: " + Math.round(value * 200) + "%"));
+        }
+
+        @Override
+        protected void applyValue() {
+            SolarisConfig.BRIGHTNESS.set(value * 2.0);
+            SolarisTexture.invalidateAll();
+        }
+    }
+
+    private static class FoliageBrightnessSlider extends AbstractSliderButton {
+
+        FoliageBrightnessSlider(int x, int y, int w, int h) {
+            super(x, y, w, h, Component.empty(), SolarisConfig.FOLIAGE_BRIGHTNESS.get() / 2.0);
+            updateMessage();
+        }
+
+        @Override
+        protected void updateMessage() {
+            setMessage(Component.literal("Foliage Brightness: " + Math.round(value * 200) + "%"));
+        }
+
+        @Override
+        protected void applyValue() {
+            SolarisConfig.FOLIAGE_BRIGHTNESS.set(value * 2.0);
             SolarisTexture.invalidateAll();
         }
     }
@@ -419,18 +461,10 @@ public class SolarisDisplaySettingsScreen extends Screen {
         }
     }
 
-    /**
-     * Ocean sub-biome water-color blending — steps of 4 across 5 discrete positions
-     * (0/4/8/12/16, see {@link SolarisConfig#WATER_BLEND_RADIUS}'s comment), not a continuous
-     * slider, since intermediate values in between don't mean anything different from the
-     * nearest step (the sampler snaps to a multiple of 4 regardless). 0 = OFF reproduces the
-     * sharper, chunk-grid-visible look some players specifically asked to keep as an option;
-     * the default (8) is unchanged from before this was configurable at all.
-     */
     private static class BiomeBlendSlider extends AbstractSliderButton {
 
         private static final int STEP = 4;
-        private static final int MAX_STEPS = 4; // 0, 4, 8, 12, 16
+        private static final int MAX_STEPS = 4;
 
         BiomeBlendSlider(int x, int y, int w, int h) {
             super(x, y, w, h, Component.empty(), (SolarisConfig.WATER_BLEND_RADIUS.get() / STEP) / (double) MAX_STEPS);
@@ -457,7 +491,6 @@ public class SolarisDisplaySettingsScreen extends Screen {
     private static class IconScaleSlider extends AbstractSliderButton {
 
         IconScaleSlider(int x, int y, int w, int h) {
-            // Real range is 0.5..3.0 — normalize into the slider's required 0..1.
             super(x, y, w, h, Component.empty(), (SolarisConfig.WAYPOINT_ICON_SCALE.get() - 0.5) / 2.5);
             updateMessage();
         }
@@ -471,8 +504,25 @@ public class SolarisDisplaySettingsScreen extends Screen {
         @Override
         protected void applyValue() {
             SolarisConfig.WAYPOINT_ICON_SCALE.set(0.5 + value * 2.5);
-            // No SolarisTexture.invalidateAll() — icon size is applied at render time in
-            // SolarisMapScreen, not baked into the terrain texture, so nothing to rebuild.
+        }
+    }
+
+    private static class MinimapZoomSlider extends AbstractSliderButton {
+
+        MinimapZoomSlider(int x, int y, int w, int h) {
+            super(x, y, w, h, Component.empty(), (SolarisConfig.MINIMAP_ZOOM.get() - 1.0) / 7.0);
+            updateMessage();
+        }
+
+        @Override
+        protected void updateMessage() {
+            double zoom = 1.0 + value * 7.0;
+            setMessage(Component.literal("Minimap Zoom: " + String.format("%.1f", zoom) + "x"));
+        }
+
+        @Override
+        protected void applyValue() {
+            SolarisConfig.MINIMAP_ZOOM.set(1.0 + value * 7.0);
         }
     }
 
@@ -491,6 +541,25 @@ public class SolarisDisplaySettingsScreen extends Screen {
         @Override
         protected void applyValue() {
             SolarisConfig.HILLSHADING_STRENGTH.set(value);
+            SolarisTexture.invalidateAll();
+        }
+    }
+
+    private static class VignetteStrengthSlider extends AbstractSliderButton {
+
+        VignetteStrengthSlider(int x, int y, int w, int h) {
+            super(x, y, w, h, Component.empty(), SolarisConfig.VIGNETTE_STRENGTH.get());
+            updateMessage();
+        }
+
+        @Override
+        protected void updateMessage() {
+            setMessage(Component.literal("Vignette Strength: " + Math.round(value * 100) + "%"));
+        }
+
+        @Override
+        protected void applyValue() {
+            SolarisConfig.VIGNETTE_STRENGTH.set(value);
             SolarisTexture.invalidateAll();
         }
     }

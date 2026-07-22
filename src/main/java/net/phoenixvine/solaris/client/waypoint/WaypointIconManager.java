@@ -23,20 +23,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * Resolves whatever an icon id refers to for drawing/labeling/cycling — callers never need to
- * know which kind they're dealing with. {@code Waypoint.icon} stores one of three shapes:
- * a {@link WaypointIcon} enum name (built-in geometric shape), {@code "custom:<filename>"} (a
- * PNG dropped into {@code config/phoenix_solaris/waypoint_icons/}, scanned once per session or
- * on {@link #rescan()}), or {@code "item:<registry name>"} (any item/block in the game, picked
- * via {@code WaypointItemPickerScreen} rather than hardcoding a fixed handful like the old
- * pickaxe/sword/axe/shovel icons).
- */
 public final class WaypointIconManager {
 
     public static final String CUSTOM_PREFIX = "custom:";
     public static final String ITEM_PREFIX = "item:";
-    private static final Path DIR = Paths.get("config", "phoenix_solaris", "waypoint_icons");
+    private static final Path DIR = Paths.get("config", "solaris", "waypoint_icons");
 
     private record Loaded(ResourceLocation location, int width, int height) {}
 
@@ -57,7 +48,6 @@ public final class WaypointIconManager {
         return ITEM_PREFIX + ForgeRegistries.ITEMS.getKey(item);
     }
 
-    /** Empty if {@code iconId} isn't an {@code item:} id, or the item is no longer registered (e.g. a removed mod). */
     public static ItemStack resolveItem(String iconId) {
         try {
             ResourceLocation id = new ResourceLocation(iconId.substring(ITEM_PREFIX.length()));
@@ -68,12 +58,6 @@ public final class WaypointIconManager {
         }
     }
 
-    /**
-     * All selectable icon ids from the fixed, enumerable sets: built-in shapes, then any loaded
-     * custom textures. Deliberately excludes {@code item:} ids — there are thousands of items,
-     * so those are only reachable through the dedicated item picker, not this list (used for
-     * things like the grid picker and the simple next()-cycling button).
-     */
     public static List<String> allIds() {
         ensureScanned();
         List<String> out = new ArrayList<>();
@@ -82,7 +66,6 @@ public final class WaypointIconManager {
         return out;
     }
 
-    /** Re-scans the icon folder — call after a player adds/removes files without restarting. */
     public static void rescan() {
         scanned = false;
         ensureScanned();
@@ -117,7 +100,6 @@ public final class WaypointIconManager {
         }
     }
 
-    /** Draws whichever icon {@code iconId} refers to, centered on ({@code cx}, {@code cy}). */
     public static void draw(GuiGraphics g, String iconId, int cx, int cy, int radius, int colorArgb) {
         ensureScanned();
         if (isItem(iconId)) {
@@ -126,8 +108,7 @@ public final class WaypointIconManager {
                 WaypointIcon.drawItem(g, cx, cy, radius, stack);
                 return;
             }
-            // Item no longer exists (mod removed, id typo'd into a save file, etc.) — fall
-            // through to the DOT fallback below instead of drawing nothing.
+
         }
         Loaded custom = CUSTOM.get(iconId);
         if (custom != null) {
@@ -149,7 +130,6 @@ public final class WaypointIconManager {
         return WaypointIcon.fromId(iconId).label();
     }
 
-    /** Cycles built-ins then customs then back to the first built-in. */
     public static String next(String iconId) {
         List<String> all = allIds();
         int idx = all.indexOf(iconId);

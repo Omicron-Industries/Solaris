@@ -1,11 +1,5 @@
 package net.phoenixvine.solaris.client.render;
 
-/**
- * Where a marker's name label draws relative to its icon on the fullscreen map. Applies to
- * both waypoint and GT ore vein labels — with enough markers on screen at once, a label
- * fixed to one side can run off the map's edge or overlap a neighboring icon, so letting the
- * player pick a side that fits their layout beats guessing one automatically.
- */
 public enum LabelSide {
 
     RIGHT,

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Solaris Web Map</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <div id="brand">Solaris <span id="brand-sub">Web Map</span></div>
+
+    <div id="loaders">
+      <label class="file-btn">
+        Load map file
+        <input type="file" id="map-input" accept=".solmap" />
+      </label>
+      <label class="file-btn file-btn-secondary">
+        Load waypoints (optional)
+        <input type="file" id="waypoints-input" accept=".json" />
+      </label>
+    </div>
+
+    <div id="meta" class="hidden">
+      <span id="meta-world"></span>
+      <span id="meta-dim"></span>
+      <span id="meta-date"></span>
+      <span id="meta-waypoints"></span>
+    </div>
+  </header>
+
+  <main id="stage">
+    <div id="empty-state">
+      <p>Drop a <code>.solmap</code> file here, or use the button above.</p>
+      <p class="hint">Both files come from Solaris's "Export for Web Map" button on the in-game
+      fullscreen map — nothing here is ever uploaded anywhere, it's all read locally in your
+      browser.</p>
+    </div>
+    <canvas id="map-canvas"></canvas>
+    <div id="tooltip" class="hidden"></div>
+    <div id="coords" class="hidden"></div>
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

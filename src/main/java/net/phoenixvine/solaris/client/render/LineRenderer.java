@@ -4,12 +4,6 @@ import net.minecraft.client.gui.GuiGraphics;
 
 import com.mojang.math.Axis;
 
-/**
- * A thin screen-space line between two arbitrary points — {@code GuiGraphics} has no line
- * primitive of its own. Rotates a plain {@code fill} rectangle to the segment's angle rather
- * than rasterizing pixel-by-pixel, the same {@code pushPose}/rotate/{@code fill} technique
- * {@link PlayerArrow}'s chevron already uses for its own non-axis-aligned shape.
- */
 public final class LineRenderer {
 
     private LineRenderer() {}

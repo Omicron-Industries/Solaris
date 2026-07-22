@@ -3,6 +3,7 @@ package net.phoenixvine.solaris.client.color;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.event.level.ChunkEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -10,19 +11,28 @@ import net.phoenixvine.solaris.PhoenixSolaris;
 import net.phoenixvine.solaris.api.SolarisAPI;
 import net.phoenixvine.solaris.api.SolarisFeatureState;
 import net.phoenixvine.solaris.client.perf.SolarisProfiler;
+import net.phoenixvine.solaris.client.render.SolarisTexture;
 import net.phoenixvine.solaris.config.SolarisConfig;
+
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Mod.EventBusSubscriber(modid = PhoenixSolaris.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public class ChunkColorEvents {
+
+    static final Set<ChunkKey> FALLBACK_TAINTED = ConcurrentHashMap.newKeySet();
+
+    @SubscribeEvent
+    public static void onLoggingIn(ClientPlayerNetworkEvent.LoggingIn event) {
+
+        SolarisTexture.invalidateAll();
+    }
 
     @SubscribeEvent
     public static void onChunkLoad(ChunkEvent.Load event) {
         if (!(event.getLevel() instanceof Level level) || !level.isClientSide()) return;
         if (!(event.getChunk() instanceof net.minecraft.world.level.chunk.LevelChunk)) return;
-        // WORLD_SURFACE-based sampling is meaningless in a ceiling dimension (the Nether) — see
-        // SolarisTexture.isCaveSliceMode's doc — and SolarisTexture never reads this cache for
-        // one, so sampling/persisting it here would just be wasted CPU and disk for data nothing
-        // ever looks at.
+
         if (level.dimensionType().hasCeiling()) return;
 
         if (!SolarisAPI.getFeatureState(SolarisAPI.FEATURE_WORLD_MAP, level.dimension().location())
@@ -43,31 +53,33 @@ public class ChunkColorEvents {
         ChunkKey key = ChunkKey.of(level, pos);
         SolarisProfiler.time("chunkSample", () -> resample(level, key, pos));
 
-        // If the chunk to the south was already sampled before this one loaded, its north edge
-        // (row lz=0) fell back to flat shading — see ChunkColorSampler's class doc — since it
-        // had no loaded neighbor to compare against at the time. That fallback is otherwise
-        // permanent (chunks only resample on load, not periodically), which is what actually
-        // caused persistent thin-line artifacts along whichever chunk edges happened to sample
-        // before their neighbor: this doesn't depend on chunk load order anymore, since the
-        // south chunk gets a second, correct sample as soon as this one becomes available.
-        ChunkKey southKey = new ChunkKey(key.dimension(), key.x(), key.z() + 1);
-        if (ChunkColorCache.contains(southKey)) {
-            SolarisProfiler.time("chunkSample", () -> resample(level, southKey, southKey.toChunkPos()));
+        for (int[] d : new int[][] { { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 } }) {
+            ChunkKey neighborKey = new ChunkKey(key.dimension(), key.x() + d[0], key.z() + d[1]);
+            if (ChunkColorCache.contains(neighborKey)) {
+                SolarisProfiler.time("chunkSample", () -> resample(level, neighborKey, neighborKey.toChunkPos()));
+            }
         }
     }
 
-    /**
-     * Shared with {@code S2CForceUpdateChunkPacket}'s client-side handler — "force update a
-     * chunk" is just this same sample-and-cache logic, invoked directly rather than through the
-     * gate/range checks above (a force-update is explicitly meant to bypass those).
-     */
     public static void resample(Level level, ChunkKey key, net.minecraft.world.level.ChunkPos pos) {
-        int[] pixels = ChunkColorSampler.sample(level, pos);
+        ChunkColorSampler.ColorSample colorSample = ChunkColorSampler.sample(level, pos);
         ChunkColorSampler.HeightSample heightSample = ChunkColorSampler.sampleHeights(level, pos);
-        ChunkColorCache.put(key, pixels);
+        ChunkColorCache.put(key, colorSample.pixels);
+        ChunkLightCache.put(key, colorSample.lightEmitting);
         ChunkHeightCache.put(key, heightSample.heights);
         ChunkWaterCache.put(key, heightSample.water);
         ChunkRailCache.put(key, heightSample.rails);
-        PersistentChunkStore.put(key, pixels, heightSample.heights, heightSample.water);
+        ChunkWaterTintCache.put(key, colorSample.waterTint);
+        ChunkWaterDepthCache.put(key, colorSample.waterDepth);
+        ChunkWaterOceanCache.put(key, colorSample.waterOcean);
+        ChunkFoliageCache.put(key, colorSample.foliage);
+
+        PersistentChunkStore.put(key, colorSample.pixels, heightSample.heights, heightSample.water,
+                colorSample.waterTint, colorSample.waterDepth, colorSample.waterOcean, colorSample.foliage);
+        if (colorSample.hadFallback) {
+            FALLBACK_TAINTED.add(key);
+        } else {
+            FALLBACK_TAINTED.remove(key);
+        }
     }
 }

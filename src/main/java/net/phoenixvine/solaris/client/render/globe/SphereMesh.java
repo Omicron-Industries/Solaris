@@ -12,59 +12,23 @@ import org.joml.Vector3f;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * A lat/long UV-sphere, rebuilt (not necessarily every frame — see {@link #rebuild}) whenever
- * the backing terrain height data changes, since vertex radius is displaced by real world Y —
- * without that, the flat-tinted terrain texture reads as a sticker pasted on a ball rather than
- * actual landmass. Displacement is normalized against a fixed height range and clamped, rather
- * than a raw linear scale off actual Y: an extreme-terrain worldgen mod (very tall mountains)
- * would otherwise turn the globe into a spiky, unstable-looking mess — clamping means even a
- * mountain far taller than vanilla's just maxes out at the same bump as vanilla's tallest peak,
- * instead of scaling further.
- *
- * Texture U wraps longitude (0 at u=0, full turn at u=1), V spans latitude (0 = "north pole" at
- * v=0, 1 = "south pole" at v=1) — matches {@link GlobeCamera}'s inverse mapping so a marker
- * placed via {@code screenToSpherePoint} projects back to the exact screen position {@code
- * sphereToScreen} would draw it at. Note this mapping is independent of displacement: markers
- * still project off the undisplaced unit sphere, since a marker's exact position mattering more
- * than it visually sitting flush with a nearby mountain's bump is the right tradeoff here.
- */
 public final class SphereMesh {
 
     private static final int SEGMENTS = 48;
     private static final int RINGS = 24;
 
-    /** Height delta (blocks) from sea level that reaches full displacement — clamped beyond this either way. */
     private static final float RELIEF_RANGE = 96f;
-    /** Max radius perturbation, as a fraction of the unit sphere's radius, at full displacement. */
+
     private static final float RELIEF_SCALE = 0.12f;
 
-    /** Vertex color darkens down to this fraction of full brightness right at the silhouette edge. */
     private static final float RIM_DARKEST = 0.4f;
 
-    /** Flat list of {px, py, pz, nx, ny, nz, u, v} vertices, three per triangle, already fully expanded. */
     private float[][] vertices = buildFlat();
 
-    /**
-     * Rebuilds the mesh with per-vertex radius displaced by {@code heights} (row-major,
-     * {@code z*sizePixels+x}, same grid as the terrain texture's pixels) relative to
-     * {@code seaLevel}. Cheap enough (a few hundred vertices) to call every frame the globe is
-     * visible rather than tracking a separate "did the texture actually change" dirty flag.
-     */
     public void rebuild(int[] heights, int sizePixels, int seaLevel) {
         vertices = build(heights, sizePixels, seaLevel);
     }
 
-    /**
-     * Emits every precomputed vertex through {@code consumer}, transformed by {@code pose}'s
-     * current matrices — mirrors how {@code LevelRenderer.renderLineBox} feeds a live
-     * {@link VertexConsumer} from static geometry rather than rebuilding per frame.
-     *
-     * Also applies a per-vertex rim/fresnel darkening: the vertex normal rotated into the
-     * current view by {@code pose}'s normal matrix gives exactly the "facing the camera" vs.
-     * "curving away at the edge" distinction a flat-shaded sphere otherwise lacks — its Z
-     * component is 1 dead-center and drops to 0 at the silhouette.
-     */
     public void render(VertexConsumer consumer, PoseStack.Pose pose, int light) {
         Matrix4f positionMatrix = pose.pose();
         Matrix3f normalMatrix = pose.normal();
@@ -90,7 +54,6 @@ public final class SphereMesh {
     }
 
     private static float[][] build(int[] heights, int sizePixels, int seaLevel) {
-        // (RINGS+1) x (SEGMENTS+1) grid; each entry is {px, py, pz, nx, ny, nz, u, v}.
         float[][] grid = new float[(RINGS + 1) * (SEGMENTS + 1)][];
         for (int row = 0; row <= RINGS; row++) {
             float v = row / (float) RINGS;
@@ -124,7 +87,6 @@ public final class SphereMesh {
         return triangles.toArray(new float[0][]);
     }
 
-    /** Sea-level-relative, normalized-and-clamped radius offset for the given UV, or 0 if no height data yet. */
     private static float relief(int[] heights, int sizePixels, int seaLevel, float u, float v) {
         if (heights == null) return 0f;
         int px = Mth.clamp(Math.round(u * sizePixels), 0, sizePixels - 1);
@@ -134,14 +96,6 @@ public final class SphereMesh {
         return normalized * RELIEF_SCALE;
     }
 
-    /**
-     * Adds a triangle, flipping its winding if needed so the face normal (edge cross product)
-     * points outward — away from the sphere's center, same direction as the vertices' own
-     * outward normal. A naive UV-space winding choice doesn't reliably stay outward-facing once
-     * curved onto a sphere, and {@code RenderType.entityCutout} backface-culls anything that
-     * comes out backward, which showed up as an alternating black/textured triangle checkerboard
-     * across the globe instead of a solid sphere.
-     */
     private static void addTriangle(List<float[]> out, float[] a, float[] b, float[] c) {
         float e1x = b[0] - a[0];
         float e1y = b[1] - a[1];

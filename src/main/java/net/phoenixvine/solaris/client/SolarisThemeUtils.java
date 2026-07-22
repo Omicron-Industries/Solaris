@@ -2,11 +2,6 @@ package net.phoenixvine.solaris.client;
 
 import net.minecraft.util.Mth;
 
-/**
- * Flat primitive color cache for the active {@link SolarisTheme}, mirrors
- * {@code net.phoenixvine.guilds.client.GuildThemeUtils}. Call {@link #refreshCache()}
- * whenever the active theme changes or is edited.
- */
 public final class SolarisThemeUtils {
 
     private SolarisThemeUtils() {}

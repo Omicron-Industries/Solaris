@@ -6,12 +6,6 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * Bounded, LRU-evicted cache of which columns in a chunk are water at the surface — paired with
- * {@link ChunkHeightCache}, populated from the same {@code ChunkColorSampler.sampleHeights} pass.
- * Kept separate from the height cache (rather than merged) since callers needing height data
- * (globe relief displacement) don't all need the water flag too.
- */
 public final class ChunkWaterCache {
 
     private ChunkWaterCache() {}

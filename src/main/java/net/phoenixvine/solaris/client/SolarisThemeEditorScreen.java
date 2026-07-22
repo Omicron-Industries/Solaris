@@ -18,7 +18,6 @@ import java.util.Stack;
 
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.*;
 
-/** Mirrors {@code net.phoenixvine.guilds.client.GuildThemeEditorScreen}, trimmed to Solaris's 8 fields. */
 @OnlyIn(Dist.CLIENT)
 public class SolarisThemeEditorScreen extends Screen {
 
@@ -144,8 +143,6 @@ public class SolarisThemeEditorScreen extends Screen {
                 .findFirst().orElse(fallback);
     }
 
-    // ── Save ─────────────────────────────────────────────────────────────────
-
     private void save() {
         String id = nameInput.getValue().trim().toUpperCase(Locale.ROOT);
         if (id.isEmpty()) return;
@@ -163,8 +160,6 @@ public class SolarisThemeEditorScreen extends Screen {
         pendingAction = null;
         init();
     }
-
-    // ── Undo ─────────────────────────────────────────────────────────────────
 
     private void pushSnap() {
         Snapshot cur = snap(SolarisTheme.current(),
@@ -226,8 +221,6 @@ public class SolarisThemeEditorScreen extends Screen {
         t.faint.set(s.faint());
     }
 
-    // ── Render ────────────────────────────────────────────────────────────────
-
     @Override
     public void render(GuiGraphics g, int mx, int my, float pt) {
         int sideW = Math.max(175, width / 4);
@@ -260,7 +253,6 @@ public class SolarisThemeEditorScreen extends Screen {
         int sideW = Math.max(175, width / 4);
         int leftW = width - sideW - 10;
 
-        // Mini map-screen mockup: header bar + terrain area + a minimap chip in the corner.
         int pTop = 12;
         int pH = height > 360 ? 90 : 65;
         g.fill(15, pTop, leftW, pTop + pH, C_PANEL);
@@ -271,11 +263,9 @@ public class SolarisThemeEditorScreen extends Screen {
         g.fill(leftW - 1, pTop, leftW, pTop + pH, C_BORDER);
         g.drawCenteredString(font, "Solaris", 15 + (leftW - 15) / 2, pTop + 4, C_ACCENT);
 
-        // Fog-colored "unexplored terrain" swatch
         int fogY = pTop + 20;
         g.fill(24, fogY, leftW - 60, pTop + pH - 8, C_FAINT);
 
-        // Minimap chip in the corner with border + accent player dot
         int chipSize = Math.min(48, pH - 26);
         int chipX = leftW - 16 - chipSize;
         int chipY = pTop + 20;
@@ -287,7 +277,6 @@ public class SolarisThemeEditorScreen extends Screen {
 
         g.drawString(font, "Dim label text", 22, pTop + pH + 6, C_DIM, false);
 
-        // Theme list
         int listTitleY = pTop + pH + 22;
         g.drawString(font, "Available Themes (click to switch):", 15, listTitleY, C_TEXT, false);
 
@@ -314,8 +303,6 @@ public class SolarisThemeEditorScreen extends Screen {
             itemY += 16;
         }
     }
-
-    // ── Input ─────────────────────────────────────────────────────────────────
 
     @Override
     public boolean keyPressed(int kc, int sc, int mod) {
@@ -395,8 +382,6 @@ public class SolarisThemeEditorScreen extends Screen {
         pendingDeletions.clear();
         Minecraft.getInstance().setScreen(parent);
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private List<String> getVisible() {
         List<String> out = new ArrayList<>();

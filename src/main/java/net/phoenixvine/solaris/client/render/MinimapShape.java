@@ -1,28 +1,16 @@
 package net.phoenixvine.solaris.client.render;
 
-/**
- * Outline shape of the corner minimap — see {@link MinimapStyle} for the size+shape presets
- * cycled together. {@code SQUARE} and {@code CIRCLE} are special-cased in {@link
- * MinimapHudOverlay} (a plain rect needs no clipping at all; a circle has cheap exact math);
- * every other shape is a convex polygon defined here by {@link #vertices()}, clipped/outlined
- * generically via a per-row scanline against those vertices — adding a new polygon shape is
- * just adding a new vertex set, no new drawing code needed.
- */
 public enum MinimapShape {
 
     SQUARE(null),
     CIRCLE(null),
-    // Point-up equilateral-ish triangle, apex near the top edge, base near the bottom.
+    
     TRIANGLE(new float[][] { { 0.5f, 0.03f }, { 0.97f, 0.90f }, { 0.03f, 0.90f } }),
-    // A square rotated 45 degrees, touching all four edge midpoints.
+    
     DIAMOND(new float[][] { { 0.5f, 0.02f }, { 0.98f, 0.5f }, { 0.5f, 0.98f }, { 0.02f, 0.5f } }),
-    // Regular pointy-top hexagon inscribed just inside the box.
+    
     HEXAGON(hexagonVertices());
 
-    /**
-     * Normalized (0..1) vertex loop within the minimap's square bounds, in winding order. {@code null} for
-     * SQUARE/CIRCLE.
-     */
     private final float[][] vertices;
 
     MinimapShape(float[][] vertices) {
@@ -35,6 +23,59 @@ public enum MinimapShape {
 
     public boolean isPolygon() {
         return vertices != null;
+    }
+
+    public MinimapShape next() {
+        MinimapShape[] values = values();
+        return values[(ordinal() + 1) % values.length];
+    }
+
+    public String label() {
+        return switch (this) {
+            case SQUARE -> "Square";
+            case CIRCLE -> "Circle";
+            case TRIANGLE -> "Triangle";
+            case DIAMOND -> "Diamond";
+            case HEXAGON -> "Hexagon";
+        };
+    }
+
+    public float[] rowSpan(float ny) {
+        if (this == SQUARE) return new float[] { 0f, 1f };
+        if (this == CIRCLE) {
+            float dy = ny - 0.5f;
+            float r = 0.5f;
+            if (Math.abs(dy) > r) return null;
+            float halfW = (float) Math.sqrt(r * r - dy * dy);
+            return new float[] { 0.5f - halfW, 0.5f + halfW };
+        }
+
+        float minX = Float.MAX_VALUE;
+        float maxX = -Float.MAX_VALUE;
+        int n = vertices.length;
+        for (int i = 0; i < n; i++) {
+            float[] a = vertices[i];
+            float[] b = vertices[(i + 1) % n];
+            float ay = a[1];
+            float by = b[1];
+            if ((ay <= ny && by > ny) || (by <= ny && ay > ny)) {
+                float t = (ny - ay) / (by - ay);
+                float px = a[0] + t * (b[0] - a[0]);
+                minX = Math.min(minX, px);
+                maxX = Math.max(maxX, px);
+            }
+        }
+        return minX <= maxX ? new float[] { minX, maxX } : null;
+    }
+
+    public boolean containsPoint(float nx, float ny) {
+        if (this == SQUARE) return true;
+        float[] span = rowSpan(ny);
+        return span != null && nx >= span[0] && nx <= span[1];
+    }
+
+    public boolean containsPoint(int lx, int ly, int size) {
+        return containsPoint(lx / (float) size, ly / (float) size);
     }
 
     private static float[][] hexagonVertices() {

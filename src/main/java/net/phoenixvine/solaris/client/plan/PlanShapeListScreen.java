@@ -20,13 +20,6 @@ import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_HEADER;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_PANEL;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_TEXT;
 
-/**
- * Edit/delete existing plan shapes — {@code WaypointListScreen}'s shape, simplified: no
- * search/category/sort, since a build-planning feature accumulates shapes a handful at a time,
- * not the hundreds a long-running waypoint list can. Redrawing a shape's geometry isn't
- * supported here (v1 editing is name/color/height/visibility only) — delete and redraw is the
- * workflow for actually reshaping something.
- */
 @OnlyIn(Dist.CLIENT)
 public class PlanShapeListScreen extends Screen {
 

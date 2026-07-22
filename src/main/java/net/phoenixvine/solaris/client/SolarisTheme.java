@@ -14,10 +14,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/** Mirrors {@code net.phoenixvine.guilds.client.GuildTheme}'s shape and persistence pattern. */
 public class SolarisTheme {
-
-    // ── ThemeColor ────────────────────────────────────────────────────────────
 
     public static class ThemeColor {
 
@@ -56,14 +53,7 @@ public class SolarisTheme {
         }
     }
 
-    // ── Fields ────────────────────────────────────────────────────────────────
-    // bg: map screen background. panel: minimap/HUD backdrop. header: map title bar.
-    // border: panel/minimap outline. accent: player marker + highlights.
-    // text/dim: labels. faint: "fog" color for not-yet-sampled chunks.
-
     public ThemeColor bg, panel, header, border, accent, text, dim, faint;
-
-    // ── Registry ──────────────────────────────────────────────────────────────
 
     public static final Map<String, SolarisTheme> REGISTRY = new LinkedHashMap<>();
     private static SolarisTheme active = null;
@@ -75,9 +65,7 @@ public class SolarisTheme {
             .setPrettyPrinting()
             .excludeFieldsWithModifiers(Modifier.TRANSIENT)
             .create();
-    private static final Path THEMES_FILE = Paths.get("config", "phoenix_solaris_themes.json");
-
-    // ── Constructors ──────────────────────────────────────────────────────────
+    private static final Path THEMES_FILE = Paths.get("config", "solaris_themes.json");
 
     public SolarisTheme() {}
 
@@ -96,8 +84,6 @@ public class SolarisTheme {
     public SolarisTheme copy() {
         return new SolarisTheme(bg.hex, panel.hex, header.hex, border.hex, accent.hex, text.hex, dim.hex, faint.hex);
     }
-
-    // ── Static API ────────────────────────────────────────────────────────────
 
     public static SolarisTheme current() {
         if (REGISTRY.isEmpty()) loadThemes();
@@ -146,8 +132,6 @@ public class SolarisTheme {
         return true;
     }
 
-    // ── Persistence ───────────────────────────────────────────────────────────
-
     private static class ThemeSave {
 
         String active = "VOID";
@@ -170,7 +154,6 @@ public class SolarisTheme {
     public static void loadThemes() {
         REGISTRY.clear();
 
-        // Deep-space/phoenix-fire palettes — bg panel header border accent text dim faint
         REGISTRY.put("VOID", new SolarisTheme("CC05040F", "FF0A0818", "FF060512", "FF241C40",
                 "FFFF6A1A", "FFF5E8D8", "FF9A8AB0", "FF14101F"));
         REGISTRY.put("NEBULA", new SolarisTheme("CC0A0616", "FF130A22", "FF080512", "FF3A1E52",

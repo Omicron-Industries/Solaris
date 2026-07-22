@@ -22,19 +22,6 @@ import com.mojang.math.Axis;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Draws a thin vertical wireframe beam at each visible waypoint's real position in the 3D
- * world, not just on the map — so a waypoint is findable by looking around, matching what
- * JourneyMap/Xaero do. Uses {@link LevelRenderer#renderLineBox} (the same helper vanilla uses
- * for block-outline highlights) rather than hand-building vertex data, since a thin box
- * outline already reads fine as a "beam" without needing a proper billboard/quad renderer.
- *
- * Waypoints whose icon is an {@code item:} id (see {@link WaypointIconManager}) additionally
- * get a small floating, slowly-spinning, gently-bobbing 3D render of that actual item/block —
- * via {@code ItemRenderer.renderStatic}, the same real in-world item model rendering vanilla
- * uses for dropped items, not a flat 2D icon — hovering just above the beam's base. Built-in
- * shape icons (dot, home, etc.) have no natural 3D equivalent, so they keep just the beam.
- */
 @Mod.EventBusSubscriber(modid = PhoenixSolaris.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public class WaypointBeamRenderer {
 
@@ -66,12 +53,6 @@ public class WaypointBeamRenderer {
         poseStack.pushPose();
         poseStack.translate(-camPos.x, -camPos.y, -camPos.z);
 
-        // Two separate passes rather than interleaving per waypoint: item-model rendering
-        // (renderFloatingIcon, below) fetches its OWN buffers for its own render types, which
-        // ends whatever batch was previously active on the shared BufferSource — including our
-        // "lines" batch, if we'd already started it. Reusing that now-ended VertexConsumer on
-        // the next loop iteration crashed with "BufferBuilder not started". Finishing all the
-        // line boxes first, fully, before touching any item rendering avoids that entirely.
         List<Waypoint> inRange = new ArrayList<>();
         VertexConsumer lines = bufferSource.getBuffer(RenderType.lines());
         for (Waypoint w : waypoints) {

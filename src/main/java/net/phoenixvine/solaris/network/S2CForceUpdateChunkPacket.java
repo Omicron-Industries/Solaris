@@ -13,13 +13,6 @@ import net.phoenixvine.solaris.client.render.SolarisTexture;
 
 import java.util.function.Supplier;
 
-/**
- * Server-triggered "force update this one chunk" — bypasses the target player's own world-map
- * write gate/range restrictions entirely (that's the point of "force"), but still re-checks
- * {@link Level#hasChunk} client-side before sampling, matching the server-side {@code
- * SolarisServerAPI#forceUpdateChunk}'s own pre-check: an ungenerated chunk is skipped, never
- * force-generated, on either side.
- */
 public class S2CForceUpdateChunkPacket {
 
     private final String dimension;
@@ -53,8 +46,7 @@ public class S2CForceUpdateChunkPacket {
         Minecraft mc = Minecraft.getInstance();
         Level level = mc.level;
         if (level == null || !level.dimension().location().toString().equals(pkt.dimension)) return;
-        // Defense in depth — the server already checked getChunkSource().hasChunk before sending,
-        // but the client's own view of what's loaded is the one that actually matters for sampling.
+
         if (!level.hasChunk(pkt.chunkX, pkt.chunkZ)) return;
 
         ChunkPos pos = new ChunkPos(pkt.chunkX, pkt.chunkZ);
