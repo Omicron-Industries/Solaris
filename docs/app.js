@@ -186,19 +186,21 @@ async function parseSolmap(arrayBuffer) {
     width, height, baseImageData: imageData, heights, hasData, canvas: null };
 }
 
-// Hillshading mirrors the in-game SolarisTexture#applyHillshading formula so the web map reads
-// as the same place, not a flatter re-derivation of it.
+// Same lighting setup as the in-game SolarisTexture#applyHillshading, but with a stronger gain
+// and wider clamp range — the in-game version reads a fresh, dense height sample every pixel of a
+// small moving window, while this reads a coarser, already-exported snapshot, so a 1:1 gain came
+// out too subtle to notice on anything short of a real mountain range.
 const LIGHT_X = -0.5, LIGHT_Y = -0.5, LIGHT_Z = 0.8;
 const LIGHT_LEN = Math.sqrt(LIGHT_X * LIGHT_X + LIGHT_Y * LIGHT_Y + LIGHT_Z * LIGHT_Z);
 const FLAT_SHADE = LIGHT_Z / LIGHT_LEN;
-const HILLSHADE_GAIN = 1.8;
+const HILLSHADE_GAIN = 3.2;
 
 function hillshadeFactor(dzdx, dzdy) {
   const nx = -dzdx, ny = -dzdy, nz = 1;
   const nLen = Math.sqrt(nx * nx + ny * ny + nz * nz);
   const shade = (nx * LIGHT_X + ny * LIGHT_Y + nz * LIGHT_Z) / (nLen * LIGHT_LEN);
   const factor = 1 + HILLSHADE_GAIN * (shade - FLAT_SHADE);
-  return Math.max(0.3, Math.min(1.8, factor));
+  return Math.max(0.15, Math.min(2.2, factor));
 }
 
 function rebuildCanvas(map) {
@@ -299,15 +301,31 @@ function drawChunkGrid() {
   const v = state.view;
   const step = 16 * v.zoom;
   if (step < 4) return; // too dense to be useful, and expensive to draw
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+  // A single semi-transparent color reads as almost invisible against colorful terrain — draw a
+  // dark line offset by 1px next to a light one so there's always contrast, whether the chunk
+  // underneath is bright sand or deep water.
   ctx.lineWidth = 1;
-  ctx.beginPath();
   const startX = v.offsetX % step;
+  const startY = v.offsetY % step;
+
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.55)";
+  ctx.beginPath();
+  for (let x = startX; x < canvas.width; x += step) {
+    ctx.moveTo(Math.round(x) + 1.5, 0);
+    ctx.lineTo(Math.round(x) + 1.5, canvas.height);
+  }
+  for (let y = startY; y < canvas.height; y += step) {
+    ctx.moveTo(0, Math.round(y) + 1.5);
+    ctx.lineTo(canvas.width, Math.round(y) + 1.5);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
+  ctx.beginPath();
   for (let x = startX; x < canvas.width; x += step) {
     ctx.moveTo(Math.round(x) + 0.5, 0);
     ctx.lineTo(Math.round(x) + 0.5, canvas.height);
   }
-  const startY = v.offsetY % step;
   for (let y = startY; y < canvas.height; y += step) {
     ctx.moveTo(0, Math.round(y) + 0.5);
     ctx.lineTo(canvas.width, Math.round(y) + 0.5);
