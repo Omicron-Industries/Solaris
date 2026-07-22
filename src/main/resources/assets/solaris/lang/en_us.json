@@ -1,0 +1,12 @@
+{
+  "key.solaris.map": "Open Map",
+  "key.solaris.new_waypoint": "New Waypoint Here",
+  "key.solaris.toggle_compass": "Toggle Waypoint Compass HUD",
+  "key.solaris.toggle_minimap_rotate": "Toggle Minimap Rotation Lock",
+  "key.solaris.cycle_minimap_style": "Cycle Minimap Size/Shape",
+  "key.categories.solaris": "Solaris",
+  "solaris.map.title": "Solaris",
+  "solaris.waypoint.added": "Waypoint added: %s (edit it from the Waypoints list)",
+  "solaris.export.success": "Map exported to solaris_maps/%s",
+  "solaris.export.failure": "Couldn't export map: %s"
+}
