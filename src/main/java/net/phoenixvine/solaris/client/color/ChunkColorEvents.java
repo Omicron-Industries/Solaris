@@ -1,6 +1,5 @@
 package net.phoenixvine.solaris.client.color;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
@@ -12,7 +11,6 @@ import net.phoenixvine.solaris.api.SolarisAPI;
 import net.phoenixvine.solaris.api.SolarisFeatureState;
 import net.phoenixvine.solaris.client.perf.SolarisProfiler;
 import net.phoenixvine.solaris.client.render.SolarisTexture;
-import net.phoenixvine.solaris.config.SolarisConfig;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,7 +22,6 @@ public class ChunkColorEvents {
 
     @SubscribeEvent
     public static void onLoggingIn(ClientPlayerNetworkEvent.LoggingIn event) {
-
         SolarisTexture.invalidateAll();
     }
 
@@ -40,15 +37,14 @@ public class ChunkColorEvents {
             return;
         }
 
+        // No writeRangeChunks distance gate here — that ceiling exists to bound how far LiveChunkRefresh's
+        // own PROACTIVE periodic sweep is allowed to scan outward from the player, not to filter chunks
+        // the game itself just handed us. Gating this REACTIVE path the same way used to silently drop a
+        // chunk whenever it took long enough to generate/arrive (heavier modpacks, or simply flying fast)
+        // that the player had already moved beyond the ceiling by the time the load event fired — exactly
+        // the "new chunks don't always get captured" gap. A chunk that loaded client-side should always be
+        // sampled, full stop.
         var pos = event.getChunk().getPos();
-
-        var player = Minecraft.getInstance().player;
-        if (player != null) {
-            int writeRange = SolarisConfig.WORLD_MAP_WRITE_RANGE_CHUNKS.get();
-            int dx = pos.x - player.chunkPosition().x;
-            int dz = pos.z - player.chunkPosition().z;
-            if (Math.max(Math.abs(dx), Math.abs(dz)) > writeRange) return;
-        }
 
         ChunkKey key = ChunkKey.of(level, pos);
         SolarisProfiler.time("chunkSample", () -> resample(level, key, pos));

@@ -25,11 +25,12 @@ const MAGIC = 0x534f4c4d;
 const SUPPORTED_VERSION = 1;
 
 const state = {
-  map: null, // { worldName, dimension, exportedAt, minChunkX, minChunkZ, width, height, canvas }
+  map: null, // { worldName, dimension, exportedAt, minChunkX, minChunkZ, width, height, canvas, baseImageData, heights }
   waypoints: [], // filtered to the loaded map's dimension
   view: { offsetX: 0, offsetY: 0, zoom: 1, minZoom: 0.05, maxZoom: 32 },
   dragging: false,
   lastPointer: null,
+  options: { hillshading: true, chunkGrid: false },
 };
 
 const canvas = document.getElementById("map-canvas");
@@ -38,6 +39,22 @@ const emptyState = document.getElementById("empty-state");
 const tooltip = document.getElementById("tooltip");
 const coordsEl = document.getElementById("coords");
 const metaEl = document.getElementById("meta");
+const optionsEl = document.getElementById("options");
+const scalebarEl = document.getElementById("scalebar");
+const scalebarLineEl = document.getElementById("scalebar-line");
+const scalebarLabelEl = document.getElementById("scalebar-label");
+
+document.getElementById("opt-hillshade").addEventListener("change", (e) => {
+  state.options.hillshading = e.target.checked;
+  if (state.map) {
+    rebuildCanvas(state.map);
+    render();
+  }
+});
+document.getElementById("opt-grid").addEventListener("change", (e) => {
+  state.options.chunkGrid = e.target.checked;
+  render();
+});
 
 // ── File loading ─────────────────────────────────────────────────────────────
 
@@ -65,10 +82,13 @@ async function loadMapFile(file) {
     const parsed = await parseSolmap(buf);
     state.map = parsed;
     state.waypoints = []; // stale until re-matched against the new dimension
+    rebuildCanvas(parsed);
     fitToView();
     updateMeta();
     emptyState.classList.add("hidden");
     canvas.classList.remove("hidden");
+    optionsEl.classList.remove("hidden");
+    scalebarEl.classList.remove("hidden");
     render();
   } catch (err) {
     alert("Couldn't load that .solmap file: " + err.message);
@@ -137,6 +157,8 @@ async function parseSolmap(arrayBuffer) {
 
   const imageData = new ImageData(width, height);
   const pixels = imageData.data;
+  const heights = new Int16Array(width * height);
+  const hasData = new Uint8Array(width * height);
 
   for (let c = 0; c < chunkCount; c++) {
     const cx = i32();
@@ -146,22 +168,72 @@ async function parseSolmap(arrayBuffer) {
     for (let p = 0; p < 256; p++) {
       const r = u8(), g = u8(), b = u8();
       const localX = p % 16, localZ = (p / 16) | 0;
-      const idx = ((baseZ + localZ) * width + (baseX + localX)) * 4;
+      const pixelIdx = (baseZ + localZ) * width + (baseX + localX);
+      const idx = pixelIdx * 4;
       pixels[idx] = r;
       pixels[idx + 1] = g;
       pixels[idx + 2] = b;
       pixels[idx + 3] = 255;
+      hasData[pixelIdx] = 1;
     }
-    offset += 256 * 2; // heights: parsed lazily only if/when a hillshade feature needs them
+    for (let p = 0; p < 256; p++) {
+      const localX = p % 16, localZ = (p / 16) | 0;
+      heights[(baseZ + localZ) * width + (baseX + localX)] = i16();
+    }
   }
 
+  return { worldName, dimension, exportedAt, minChunkX, minChunkZ, maxChunkX, maxChunkZ,
+    width, height, baseImageData: imageData, heights, hasData, canvas: null };
+}
+
+// Hillshading mirrors the in-game SolarisTexture#applyHillshading formula so the web map reads
+// as the same place, not a flatter re-derivation of it.
+const LIGHT_X = -0.5, LIGHT_Y = -0.5, LIGHT_Z = 0.8;
+const LIGHT_LEN = Math.sqrt(LIGHT_X * LIGHT_X + LIGHT_Y * LIGHT_Y + LIGHT_Z * LIGHT_Z);
+const FLAT_SHADE = LIGHT_Z / LIGHT_LEN;
+const HILLSHADE_GAIN = 1.8;
+
+function hillshadeFactor(dzdx, dzdy) {
+  const nx = -dzdx, ny = -dzdy, nz = 1;
+  const nLen = Math.sqrt(nx * nx + ny * ny + nz * nz);
+  const shade = (nx * LIGHT_X + ny * LIGHT_Y + nz * LIGHT_Z) / (nLen * LIGHT_LEN);
+  const factor = 1 + HILLSHADE_GAIN * (shade - FLAT_SHADE);
+  return Math.max(0.3, Math.min(1.8, factor));
+}
+
+function rebuildCanvas(map) {
+  const { width, height, baseImageData, heights, hasData } = map;
   const off = document.createElement("canvas");
   off.width = width;
   off.height = height;
-  off.getContext("2d").putImageData(imageData, 0, 0);
+  const offCtx = off.getContext("2d");
 
-  return { worldName, dimension, exportedAt, minChunkX, minChunkZ, maxChunkX, maxChunkZ,
-    width, height, canvas: off };
+  if (!state.options.hillshading) {
+    offCtx.putImageData(baseImageData, 0, 0);
+    map.canvas = off;
+    return;
+  }
+
+  const shaded = new ImageData(new Uint8ClampedArray(baseImageData.data), width, height);
+  const pixels = shaded.data;
+  for (let z = 0; z < height; z++) {
+    for (let x = 0; x < width; x++) {
+      const idx = z * width + x;
+      if (!hasData[idx]) continue;
+      const west = x > 0 ? heights[idx - 1] : heights[idx];
+      const east = x < width - 1 ? heights[idx + 1] : heights[idx];
+      const north = z > 0 ? heights[idx - width] : heights[idx];
+      const south = z < height - 1 ? heights[idx + width] : heights[idx];
+      const factor = hillshadeFactor((east - west) * 0.5, (south - north) * 0.5);
+      if (factor === 1) continue;
+      const p = idx * 4;
+      pixels[p] = Math.max(0, Math.min(255, pixels[p] * factor));
+      pixels[p + 1] = Math.max(0, Math.min(255, pixels[p + 1] * factor));
+      pixels[p + 2] = Math.max(0, Math.min(255, pixels[p + 2] * factor));
+    }
+  }
+  offCtx.putImageData(shaded, 0, 0);
+  map.canvas = off;
 }
 
 // ── View / rendering ─────────────────────────────────────────────────────────
@@ -206,6 +278,8 @@ function render() {
   ctx.drawImage(state.map.canvas, v.offsetX, v.offsetY, state.map.width * v.zoom,
       state.map.height * v.zoom);
 
+  if (state.options.chunkGrid) drawChunkGrid();
+
   for (const w of state.waypoints) {
     const [sx, sy] = worldToScreen(w.x, w.z);
     if (sx < -20 || sy < -20 || sx > canvas.width + 20 || sy > canvas.height + 20) continue;
@@ -217,6 +291,41 @@ function render() {
     ctx.strokeStyle = "#000000";
     ctx.stroke();
   }
+
+  updateScaleBar();
+}
+
+function drawChunkGrid() {
+  const v = state.view;
+  const step = 16 * v.zoom;
+  if (step < 4) return; // too dense to be useful, and expensive to draw
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  const startX = v.offsetX % step;
+  for (let x = startX; x < canvas.width; x += step) {
+    ctx.moveTo(Math.round(x) + 0.5, 0);
+    ctx.lineTo(Math.round(x) + 0.5, canvas.height);
+  }
+  const startY = v.offsetY % step;
+  for (let y = startY; y < canvas.height; y += step) {
+    ctx.moveTo(0, Math.round(y) + 0.5);
+    ctx.lineTo(canvas.width, Math.round(y) + 0.5);
+  }
+  ctx.stroke();
+}
+
+const SCALE_STEPS = [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
+
+function updateScaleBar() {
+  const zoom = state.view.zoom;
+  let blocks = SCALE_STEPS[0];
+  for (const step of SCALE_STEPS) {
+    if (step * zoom > 150) break;
+    blocks = step;
+  }
+  scalebarLineEl.style.width = Math.round(blocks * zoom) + "px";
+  scalebarLabelEl.textContent = blocks + " blocks";
 }
 
 function waypointColor(w) {

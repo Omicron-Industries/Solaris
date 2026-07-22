@@ -4,11 +4,11 @@ public enum MinimapShape {
 
     SQUARE(null),
     CIRCLE(null),
-    
+
     TRIANGLE(new float[][] { { 0.5f, 0.03f }, { 0.97f, 0.90f }, { 0.03f, 0.90f } }),
-    
+
     DIAMOND(new float[][] { { 0.5f, 0.02f }, { 0.98f, 0.5f }, { 0.5f, 0.98f }, { 0.02f, 0.5f } }),
-    
+
     HEXAGON(hexagonVertices());
 
     private final float[][] vertices;

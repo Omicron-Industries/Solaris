@@ -22,6 +22,11 @@
       </label>
     </div>
 
+    <div id="options" class="hidden">
+      <label class="opt-toggle"><input type="checkbox" id="opt-hillshade" checked /> Hillshading</label>
+      <label class="opt-toggle"><input type="checkbox" id="opt-grid" /> Chunk grid</label>
+    </div>
+
     <div id="meta" class="hidden">
       <span id="meta-world"></span>
       <span id="meta-dim"></span>
@@ -40,6 +45,10 @@
     <canvas id="map-canvas"></canvas>
     <div id="tooltip" class="hidden"></div>
     <div id="coords" class="hidden"></div>
+    <div id="scalebar" class="hidden">
+      <div id="scalebar-line"></div>
+      <div id="scalebar-label"></div>
+    </div>
   </main>
 </div>
 

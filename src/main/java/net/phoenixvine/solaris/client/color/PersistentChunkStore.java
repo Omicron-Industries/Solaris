@@ -113,7 +113,6 @@ public final class PersistentChunkStore {
     }
 
     public static boolean isLoaded(String dimension) {
-
         ensureLoading(dimension);
         return DIMENSIONS.containsKey(dimension);
     }
