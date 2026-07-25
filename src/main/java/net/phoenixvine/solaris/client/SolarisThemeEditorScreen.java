@@ -336,7 +336,7 @@ public class SolarisThemeEditorScreen extends Screen {
                     if (mx >= dx && mx < dx + 12) {
                         pendingDeletions.add(name.toUpperCase(Locale.ROOT));
                         undoStack.push(new UndoEntry(null, name));
-                        if (name.equalsIgnoreCase(SolarisTheme.getActiveName())) SolarisTheme.setCurrent("VOID");
+                        if (name.equalsIgnoreCase(SolarisTheme.getActiveName())) SolarisTheme.setCurrent("NEBULA");
                         confirmActive = false;
                         pendingAction = null;
                         init();

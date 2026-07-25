@@ -1,0 +1,1 @@
+net.phoenixvine.solaris.integration.kubejs.SolarisKubeJSPlugin

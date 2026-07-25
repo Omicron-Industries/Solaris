@@ -4,8 +4,10 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.storage.LevelResource;
+import net.minecraftforge.common.MinecraftForge;
 import net.phoenixvine.solaris.api.SolarisAPI;
 import net.phoenixvine.solaris.api.SolarisFeatureState;
+import net.phoenixvine.solaris.api.event.WaypointEvent;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -69,13 +71,28 @@ public final class WaypointManager {
         ensureLoaded();
         WAYPOINTS.add(waypoint);
         save();
+        MinecraftForge.EVENT_BUS.post(new WaypointEvent.Added(waypoint));
     }
 
-    public static void remove(String id) {
+    public static boolean remove(String id) {
         ensureLoaded();
-        WAYPOINTS.removeIf(w -> w.id.equals(id));
+        Waypoint target = null;
+        for (Waypoint w : WAYPOINTS) {
+            if (w.id.equals(id)) {
+                target = w;
+                break;
+            }
+        }
+        if (target == null) return false;
+
+        WaypointEvent.Removed event = new WaypointEvent.Removed(target);
+        MinecraftForge.EVENT_BUS.post(event);
+        if (event.isCanceled()) return false;
+
+        WAYPOINTS.remove(target);
         if (id.equals(trackedId)) trackedId = null;
         save();
+        return true;
     }
 
     public static void removeByName(String name) {
@@ -198,7 +215,8 @@ public final class WaypointManager {
             key = "mp-" + server.ip;
         } else if (mc.hasSingleplayerServer() && mc.getSingleplayerServer() != null) {
             Path root = mc.getSingleplayerServer().getWorldPath(LevelResource.ROOT);
-            key = "sp-" + singleplayerWorldId(root);
+            long seed = mc.getSingleplayerServer().overworld().getSeed();
+            key = "sp-" + singleplayerWorldId(root, seed);
         } else {
             key = "unknown";
         }
@@ -210,16 +228,25 @@ public final class WaypointManager {
 
     private static final String WORLD_ID_FILE = "solaris_world_id.txt";
 
-    private static String singleplayerWorldId(Path worldRoot) {
+    private static String singleplayerWorldId(Path worldRoot, long seed) {
         Path idFile = worldRoot.resolve(WORLD_ID_FILE);
         try {
             if (Files.exists(idFile)) {
                 String existing = Files.readString(idFile).trim();
-                if (!existing.isEmpty()) return existing;
+                int sep = existing.indexOf('|');
+                if (sep > 0) {
+                    String storedId = existing.substring(0, sep);
+                    try {
+                        long storedSeed = Long.parseLong(existing.substring(sep + 1));
+                        if (storedSeed == seed && !storedId.isEmpty()) return storedId;
+                    } catch (NumberFormatException ignored) {
+                        
+                    }
+                }
             }
             String fresh = UUID.randomUUID().toString();
             Files.createDirectories(worldRoot);
-            Files.writeString(idFile, fresh);
+            Files.writeString(idFile, fresh + "|" + seed);
             return fresh;
         } catch (IOException e) {
 

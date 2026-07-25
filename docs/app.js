@@ -300,7 +300,9 @@ function render() {
 function drawChunkGrid() {
   const v = state.view;
   const step = 16 * v.zoom;
-  if (step < 4) return; // too dense to be useful, and expensive to draw
+  // Only draw once chunks are genuinely large on screen — at anything resembling a "whole
+  // explored area" zoom level this would otherwise turn into a solid mesh instead of a useful grid.
+  if (step < 24) return;
   // A single semi-transparent color reads as almost invisible against colorful terrain — draw a
   // dark line offset by 1px next to a light one so there's always contrast, whether the chunk
   // underneath is bright sand or deep water.

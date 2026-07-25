@@ -8,11 +8,15 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.phoenixvine.solaris.PhoenixSolaris;
 import net.phoenixvine.solaris.client.SolarisMapScreen;
+import net.phoenixvine.solaris.client.SolarisTheme;
 import net.phoenixvine.solaris.client.overlay.SolarisOverlay;
 import net.phoenixvine.solaris.client.overlay.SolarisOverlayRegistry;
+import net.phoenixvine.solaris.client.render.MapTileCache;
 import net.phoenixvine.solaris.client.render.SolarisTexture;
+import net.phoenixvine.solaris.client.render.UnexploredStyle;
 import net.phoenixvine.solaris.client.waypoint.Waypoint;
 import net.phoenixvine.solaris.client.waypoint.WaypointManager;
+import net.phoenixvine.solaris.config.SolarisConfig;
 
 import java.util.List;
 import java.util.Map;
@@ -33,6 +37,16 @@ public final class SolarisAPI {
     public static final String FEATURE_MINIMAP = "minimap";
     public static final String FEATURE_WORLD_MAP = "world_map";
     public static final String FEATURE_UNDERGROUND_MAP = "underground_map";
+    public static final String FEATURE_SETTINGS_MENU = "settings_menu";
+    public static final String FEATURE_GOTO_COORDINATE = "goto_coordinate";
+    public static final String FEATURE_THEME_SELECT = "theme_select";
+    public static final String FEATURE_HILLSHADING = "hillshading";
+    public static final String FEATURE_VIGNETTE = "vignette";
+    public static final String FEATURE_BLACK_AND_WHITE = "black_and_white";
+    public static final String FEATURE_CHUNK_GRID = "chunk_grid";
+    public static final String FEATURE_SHOW_MOBS = "show_mobs";
+    public static final String FEATURE_RAIL_NETWORK = "rail_network";
+    public static final String FEATURE_UNEXPLORED_STYLE = "unexplored_style";
 
     private static final Map<String, BooleanSupplier> FEATURE_GATES = new ConcurrentHashMap<>();
     private static final Map<ResourceLocation, Integer> DIMENSION_TIERS = new ConcurrentHashMap<>();
@@ -46,7 +60,10 @@ public final class SolarisAPI {
         KNOWN_FEATURE_IDS.addAll(List.of(
                 FEATURE_GLOBE_VIEW, FEATURE_SHAPE_PLANNER, FEATURE_PNG_EXPORT, FEATURE_WEB_EXPORT,
                 FEATURE_GUILD_SHARE, FEATURE_FULLSCREEN_MAP, FEATURE_SHOW_COORDINATES,
-                FEATURE_WAYPOINTS, FEATURE_MINIMAP, FEATURE_WORLD_MAP, FEATURE_UNDERGROUND_MAP));
+                FEATURE_WAYPOINTS, FEATURE_MINIMAP, FEATURE_WORLD_MAP, FEATURE_UNDERGROUND_MAP,
+                FEATURE_SETTINGS_MENU, FEATURE_GOTO_COORDINATE, FEATURE_THEME_SELECT, FEATURE_HILLSHADING,
+                FEATURE_VIGNETTE, FEATURE_BLACK_AND_WHITE, FEATURE_CHUNK_GRID, FEATURE_SHOW_MOBS,
+                FEATURE_RAIL_NETWORK, FEATURE_UNEXPLORED_STYLE));
     }
 
     private static volatile boolean refreshPending = false;
@@ -159,8 +176,36 @@ public final class SolarisAPI {
         requestRefresh();
     }
 
+    private static final Map<String, SolarisOverlay> SCRIPT_OVERLAYS = new ConcurrentHashMap<>();
+
+    public static void registerScriptOverlay(String id, ScriptOverlay fn) {
+        SolarisOverlay previous = SCRIPT_OVERLAYS.remove(id);
+        if (previous != null) SolarisOverlayRegistry.unregister(previous);
+
+        SolarisOverlay overlay = (dimension, chunkX, chunkZ) ->
+                java.util.Optional.ofNullable(fn.colorAt(dimension.toString(), chunkX, chunkZ));
+        SCRIPT_OVERLAYS.put(id, overlay);
+        registerOverlay(overlay);
+    }
+
+    public static void unregisterScriptOverlay(String id) {
+        SolarisOverlay overlay = SCRIPT_OVERLAYS.remove(id);
+        if (overlay != null) unregisterOverlay(overlay);
+    }
+
+    @FunctionalInterface
+    public interface ScriptOverlay {
+
+        Integer colorAt(String dimension, int chunkX, int chunkZ);
+    }
+
     public static void requestRefresh() {
         refreshPending = true;
+    }
+
+    public static void refreshRendering() {
+        SolarisTexture.invalidateAll();
+        MapTileCache.clearAll();
     }
 
     @Mod.EventBusSubscriber(modid = PhoenixSolaris.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
@@ -171,6 +216,7 @@ public final class SolarisAPI {
             if (event.phase == TickEvent.Phase.END && refreshPending) {
                 refreshPending = false;
                 SolarisTexture.invalidateAll();
+                MapTileCache.clearAll();
             }
         }
     }
@@ -185,8 +231,8 @@ public final class SolarisAPI {
         }
     }
 
-    public static void removeWaypoint(String id) {
-        WaypointManager.remove(id);
+    public static boolean removeWaypoint(String id) {
+        return WaypointManager.remove(id);
     }
 
     public static List<Waypoint> getWaypoints() {
@@ -212,5 +258,102 @@ public final class SolarisAPI {
 
         mc.setScreen(null);
         return true;
+    }
+
+    public static String getTheme() {
+        return SolarisTheme.getActiveName();
+    }
+
+    public static List<String> getAvailableThemes() {
+        return List.copyOf(SolarisTheme.REGISTRY.keySet());
+    }
+
+    public static boolean setTheme(String name) {
+        if (!SolarisTheme.REGISTRY.containsKey(name) && !SolarisTheme.REGISTRY.containsKey(name.toUpperCase())) {
+            return false;
+        }
+        SolarisTheme.setCurrent(name);
+        return true;
+    }
+
+    public static UnexploredStyle getUnexploredStyle() {
+        return SolarisConfig.UNEXPLORED_STYLE.get();
+    }
+
+    public static void setUnexploredStyle(UnexploredStyle style) {
+        SolarisConfig.UNEXPLORED_STYLE.set(style);
+        MapTileCache.clearAll();
+    }
+
+    private static final Map<ResourceLocation, UnexploredStyle> DIMENSION_UNEXPLORED_STYLE =
+            new ConcurrentHashMap<>();
+
+    public static void setUnexploredStyle(ResourceLocation dimension, UnexploredStyle style) {
+        DIMENSION_UNEXPLORED_STYLE.put(dimension, style);
+        MapTileCache.clearAll();
+    }
+
+    public static void clearUnexploredStyleOverride(ResourceLocation dimension) {
+        DIMENSION_UNEXPLORED_STYLE.remove(dimension);
+        MapTileCache.clearAll();
+    }
+
+    public static UnexploredStyle getUnexploredStyle(ResourceLocation dimension) {
+        return DIMENSION_UNEXPLORED_STYLE.getOrDefault(dimension, SolarisConfig.UNEXPLORED_STYLE.get());
+    }
+
+    public static boolean isHillshadingEnabled() {
+        return SolarisConfig.HILLSHADING.get();
+    }
+
+    public static void setHillshadingEnabled(boolean enabled) {
+        SolarisConfig.HILLSHADING.set(enabled);
+        SolarisTexture.invalidateAll();
+        MapTileCache.clearAll();
+    }
+
+    public static boolean isVignetteEnabled() {
+        return SolarisConfig.VIGNETTE.get();
+    }
+
+    public static void setVignetteEnabled(boolean enabled) {
+        SolarisConfig.VIGNETTE.set(enabled);
+        SolarisTexture.invalidateAll();
+        MapTileCache.clearAll();
+    }
+
+    public static boolean isBlackAndWhiteEnabled() {
+        return SolarisConfig.BLACK_AND_WHITE.get();
+    }
+
+    public static void setBlackAndWhiteEnabled(boolean enabled) {
+        SolarisConfig.BLACK_AND_WHITE.set(enabled);
+        SolarisTexture.invalidateAll();
+        MapTileCache.clearAll();
+    }
+
+    public static boolean isChunkGridEnabled() {
+        return SolarisConfig.SHOW_CHUNK_GRID.get();
+    }
+
+    public static void setChunkGridEnabled(boolean enabled) {
+        SolarisConfig.SHOW_CHUNK_GRID.set(enabled);
+    }
+
+    public static boolean isShowMobsEnabled() {
+        return SolarisConfig.SHOW_MOBS.get();
+    }
+
+    public static void setShowMobsEnabled(boolean enabled) {
+        SolarisConfig.SHOW_MOBS.set(enabled);
+    }
+
+    public static boolean isRailNetworkEnabled() {
+        return SolarisConfig.SHOW_RAIL_NETWORK.get();
+    }
+
+    public static void setRailNetworkEnabled(boolean enabled) {
+        SolarisConfig.SHOW_RAIL_NETWORK.set(enabled);
+        SolarisTexture.invalidateAll();
     }
 }

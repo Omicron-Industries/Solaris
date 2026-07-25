@@ -54,7 +54,7 @@ public class SolarisTexture implements AutoCloseable {
 
     private static final int CAVE_Y_REBUILD_THRESHOLD = 3;
 
-    private static final int DEFAULT_HEIGHT = 63;
+    static final int DEFAULT_HEIGHT = 63;
 
     private final String name;
     private final ResourceLocation textureId;
@@ -181,7 +181,7 @@ public class SolarisTexture implements AutoCloseable {
         });
     }
 
-    private static boolean isCaveSliceMode(Level level, Player player) {
+    public static boolean isCaveSliceMode(Level level, Player player) {
         if (level == null) return false;
         if (!SolarisAPI.getFeatureState(SolarisAPI.FEATURE_UNDERGROUND_MAP, level.dimension().location())
                 .atLeast(SolarisFeatureState.VISIBLE)) {
@@ -512,7 +512,7 @@ public class SolarisTexture implements AutoCloseable {
         return next;
     }
 
-    private static final int WATER_BLUR_RADIUS = 3;
+    static final int WATER_BLUR_RADIUS = 3;
 
     private void blurWater() {
         boolean anyWater = false;
@@ -635,11 +635,11 @@ public class SolarisTexture implements AutoCloseable {
         blurred[idx] = FastColor.ABGR32.color(255, (int) (sumB / count), (int) (sumG / count), (int) (sumR / count));
     }
 
-    private static final float WATER_RELIEF_NEIGHBOR_SCALE = 0.3f;
+    static final float WATER_RELIEF_NEIGHBOR_SCALE = 0.3f;
 
-    private static final float WATER_RELIEF_GAIN = 0.6f;
+    static final float WATER_RELIEF_GAIN = 0.6f;
 
-    private static final float WATER_RELIEF_CLAMP = 0.15f;
+    static final float WATER_RELIEF_CLAMP = 0.15f;
 
     private void applyWaterRelief() {
         boolean anyWater = false;
@@ -690,14 +690,14 @@ public class SolarisTexture implements AutoCloseable {
         }
     }
 
-    private static final float LIGHT_X = -0.5f;
-    private static final float LIGHT_Y = -0.5f;
-    private static final float LIGHT_Z = 0.8f;
-    private static final float LIGHT_LEN = (float) Math.sqrt(LIGHT_X * LIGHT_X + LIGHT_Y * LIGHT_Y + LIGHT_Z * LIGHT_Z);
+    static final float LIGHT_X = -0.5f;
+    static final float LIGHT_Y = -0.5f;
+    static final float LIGHT_Z = 0.8f;
+    static final float LIGHT_LEN = (float) Math.sqrt(LIGHT_X * LIGHT_X + LIGHT_Y * LIGHT_Y + LIGHT_Z * LIGHT_Z);
 
-    private static final float FLAT_SHADE = LIGHT_Z / LIGHT_LEN;
+    static final float FLAT_SHADE = LIGHT_Z / LIGHT_LEN;
 
-    private static final float HILLSHADE_GAIN = 1.8f;
+    static final float HILLSHADE_GAIN = 1.8f;
 
     private void applyHillshading() {
         double strength = SolarisConfig.HILLSHADING_STRENGTH.get();
@@ -816,7 +816,7 @@ public class SolarisTexture implements AutoCloseable {
         return globeTextureId;
     }
 
-    private static int blend(int baseAbgr, int overlayArgb) {
+    static int blend(int baseAbgr, int overlayArgb) {
         int a = FastColor.ARGB32.alpha(overlayArgb);
         if (a <= 0) return baseAbgr;
 
@@ -834,7 +834,7 @@ public class SolarisTexture implements AutoCloseable {
         return FastColor.ABGR32.color(255, b, g, r);
     }
 
-    private static int applySaturation(int abgr, double saturation) {
+    static int applySaturation(int abgr, double saturation) {
         int a = FastColor.ABGR32.alpha(abgr);
         int r = FastColor.ABGR32.red(abgr);
         int g = FastColor.ABGR32.green(abgr);
@@ -847,7 +847,7 @@ public class SolarisTexture implements AutoCloseable {
         return FastColor.ABGR32.color(a, newB, newG, newR);
     }
 
-    private static int applyContrast(int abgr, double contrast) {
+    static int applyContrast(int abgr, double contrast) {
         int a = FastColor.ABGR32.alpha(abgr);
         int r = clampChannel((int) ((FastColor.ABGR32.red(abgr) - 128) * contrast) + 128);
         int g = clampChannel((int) ((FastColor.ABGR32.green(abgr) - 128) * contrast) + 128);
@@ -856,7 +856,7 @@ public class SolarisTexture implements AutoCloseable {
         return FastColor.ABGR32.color(a, b, g, r);
     }
 
-    private static int scaleBrightness(int abgr, double factor) {
+    static int scaleBrightness(int abgr, double factor) {
         int a = abgr >>> 24;
         int r = clampChannel((int) ((abgr & 255) * factor));
         int g = clampChannel((int) ((abgr >> 8 & 255) * factor));
@@ -864,7 +864,7 @@ public class SolarisTexture implements AutoCloseable {
         return a << 24 | b << 16 | g << 8 | r;
     }
 
-    private static int scaleChannels(int abgr, double rFactor, double gFactor, double bFactor) {
+    static int scaleChannels(int abgr, double rFactor, double gFactor, double bFactor) {
         int a = abgr >>> 24;
         int r = clampChannel((int) ((abgr & 255) * rFactor));
         int g = clampChannel((int) ((abgr >> 8 & 255) * gFactor));
@@ -872,7 +872,7 @@ public class SolarisTexture implements AutoCloseable {
         return a << 24 | b << 16 | g << 8 | r;
     }
 
-    private static int clampChannel(int v) {
+    static int clampChannel(int v) {
         return Math.max(0, Math.min(255, v));
     }
 

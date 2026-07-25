@@ -4,7 +4,9 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 
-import java.lang.reflect.Modifier;
+import net.phoenixvine.solaris.client.render.MapTileCache;
+import net.phoenixvine.solaris.client.render.SolarisTexture;
+
 import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -55,16 +57,15 @@ public class SolarisTheme {
 
     public ThemeColor bg, panel, header, border, accent, text, dim, faint;
 
+    private static final String DEFAULT_THEME = "NEBULA";
+
     public static final Map<String, SolarisTheme> REGISTRY = new LinkedHashMap<>();
     private static SolarisTheme active = null;
-    private static String activeName = "VOID";
+    private static String activeName = DEFAULT_THEME;
 
     private static final Set<String> BUILTINS = Set.of("VOID", "NEBULA", "SOLAR_FLARE", "ECLIPSE");
 
-    private static final Gson GSON = new GsonBuilder()
-            .setPrettyPrinting()
-            .excludeFieldsWithModifiers(Modifier.TRANSIENT)
-            .create();
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Path THEMES_FILE = Paths.get("config", "solaris_themes.json");
 
     public SolarisTheme() {}
@@ -87,7 +88,7 @@ public class SolarisTheme {
 
     public static SolarisTheme current() {
         if (REGISTRY.isEmpty()) loadThemes();
-        return active != null ? active : REGISTRY.get("VOID");
+        return active != null ? active : REGISTRY.get(DEFAULT_THEME);
     }
 
     public static String getActiveName() {
@@ -110,31 +111,42 @@ public class SolarisTheme {
         if (t != null) {
             active = t;
             activeName = name;
+            saveAll();
             SolarisThemeUtils.refreshCache();
+            invalidateThemedRendering();
         }
     }
 
     public static void saveCustomTheme(String name, SolarisTheme theme) {
         REGISTRY.put(name, theme);
         saveAll();
-        if (name.equals(activeName)) SolarisThemeUtils.refreshCache();
+        if (name.equals(activeName)) {
+            SolarisThemeUtils.refreshCache();
+            invalidateThemedRendering();
+        }
     }
 
     public static boolean deleteCustom(String name) {
         if (isBuiltin(name)) return false;
         REGISTRY.remove(name);
         if (name.equals(activeName)) {
-            activeName = "VOID";
-            active = REGISTRY.get("VOID");
+            activeName = DEFAULT_THEME;
+            active = REGISTRY.get(DEFAULT_THEME);
         }
         saveAll();
         SolarisThemeUtils.refreshCache();
+        invalidateThemedRendering();
         return true;
+    }
+
+    private static void invalidateThemedRendering() {
+        MapTileCache.clearAll();
+        SolarisTexture.invalidateAll();
     }
 
     private static class ThemeSave {
 
-        String active = "VOID";
+        String active = DEFAULT_THEME;
         Map<String, SolarisTheme> custom = new LinkedHashMap<>();
     }
 
@@ -163,7 +175,7 @@ public class SolarisTheme {
         REGISTRY.put("ECLIPSE", new SolarisTheme("CC000000", "FF0C0C0C", "FF060606", "FF2A2A2A",
                 "FFE8C468", "FFF0F0F0", "FF909090", "FF141414"));
 
-        String loadedActive = "VOID";
+        String loadedActive = DEFAULT_THEME;
         try {
             if (Files.exists(THEMES_FILE)) {
                 String json = Files.readString(THEMES_FILE);
@@ -179,7 +191,7 @@ public class SolarisTheme {
         }
 
         activeName = loadedActive;
-        active = REGISTRY.getOrDefault(activeName, REGISTRY.get("VOID"));
+        active = REGISTRY.getOrDefault(activeName, REGISTRY.get(DEFAULT_THEME));
 
         SolarisThemeUtils.refreshCache();
     }

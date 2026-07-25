@@ -10,8 +10,10 @@ import net.phoenixvine.solaris.PhoenixSolaris;
 import net.phoenixvine.solaris.api.SolarisAPI;
 import net.phoenixvine.solaris.api.SolarisFeatureState;
 import net.phoenixvine.solaris.client.perf.SolarisProfiler;
+import net.phoenixvine.solaris.client.render.MapTileCache;
 import net.phoenixvine.solaris.client.render.SolarisTexture;
 
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -20,8 +22,24 @@ public class ChunkColorEvents {
 
     static final Set<ChunkKey> FALLBACK_TAINTED = ConcurrentHashMap.newKeySet();
 
+    static final Map<ChunkKey, Integer> FALLBACK_RETRY_COUNT = new ConcurrentHashMap<>();
+
     @SubscribeEvent
     public static void onLoggingIn(ClientPlayerNetworkEvent.LoggingIn event) {
+        PhoenixSolaris.LOGGER.info("[Solaris] onLoggingIn fired — clearing in-memory chunk caches");
+
+        ChunkColorCache.clear();
+        ChunkHeightCache.clear();
+        ChunkWaterCache.clear();
+        ChunkLightCache.clear();
+        ChunkRailCache.clear();
+        ChunkWaterTintCache.clear();
+        ChunkWaterDepthCache.clear();
+        ChunkWaterOceanCache.clear();
+        ChunkFoliageCache.clear();
+        FALLBACK_TAINTED.clear();
+        FALLBACK_RETRY_COUNT.clear();
+        MapTileCache.clearAll();
         SolarisTexture.invalidateAll();
     }
 
@@ -37,13 +55,6 @@ public class ChunkColorEvents {
             return;
         }
 
-        // No writeRangeChunks distance gate here — that ceiling exists to bound how far LiveChunkRefresh's
-        // own PROACTIVE periodic sweep is allowed to scan outward from the player, not to filter chunks
-        // the game itself just handed us. Gating this REACTIVE path the same way used to silently drop a
-        // chunk whenever it took long enough to generate/arrive (heavier modpacks, or simply flying fast)
-        // that the player had already moved beyond the ceiling by the time the load event fired — exactly
-        // the "new chunks don't always get captured" gap. A chunk that loaded client-side should always be
-        // sampled, full stop.
         var pos = event.getChunk().getPos();
 
         ChunkKey key = ChunkKey.of(level, pos);
@@ -60,6 +71,15 @@ public class ChunkColorEvents {
     public static void resample(Level level, ChunkKey key, net.minecraft.world.level.ChunkPos pos) {
         ChunkColorSampler.ColorSample colorSample = ChunkColorSampler.sample(level, pos);
         ChunkColorSampler.HeightSample heightSample = ChunkColorSampler.sampleHeights(level, pos);
+
+        if (colorSample.hadFallback) {
+            FALLBACK_TAINTED.add(key);
+
+            if (ChunkColorCache.contains(key) || PersistentChunkStore.get(key) != null) return;
+        } else {
+            FALLBACK_TAINTED.remove(key);
+        }
+
         ChunkColorCache.put(key, colorSample.pixels);
         ChunkLightCache.put(key, colorSample.lightEmitting);
         ChunkHeightCache.put(key, heightSample.heights);
@@ -72,10 +92,6 @@ public class ChunkColorEvents {
 
         PersistentChunkStore.put(key, colorSample.pixels, heightSample.heights, heightSample.water,
                 colorSample.waterTint, colorSample.waterDepth, colorSample.waterOcean, colorSample.foliage);
-        if (colorSample.hadFallback) {
-            FALLBACK_TAINTED.add(key);
-        } else {
-            FALLBACK_TAINTED.remove(key);
-        }
+        MapTileCache.markDirty(key);
     }
 }

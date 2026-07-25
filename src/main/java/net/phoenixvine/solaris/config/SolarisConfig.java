@@ -27,6 +27,9 @@ public final class SolarisConfig {
     public static final ForgeConfigSpec.BooleanValue VIGNETTE;
     public static final ForgeConfigSpec.DoubleValue VIGNETTE_STRENGTH;
     public static final ForgeConfigSpec.BooleanValue BLACK_AND_WHITE;
+    public static final ForgeConfigSpec.EnumValue<net.phoenixvine.solaris.client.render.UnexploredStyle> UNEXPLORED_STYLE;
+    public static final ForgeConfigSpec.DoubleValue UNEXPLORED_DENSITY;
+    public static final ForgeConfigSpec.DoubleValue UNEXPLORED_BRIGHTNESS;
     public static final ForgeConfigSpec.BooleanValue SHOW_BLOCK_TOOLTIP;
     public static final ForgeConfigSpec.DoubleValue WATER_OPACITY;
     public static final ForgeConfigSpec.BooleanValue WATER_DEEP_ONLY;
@@ -174,6 +177,22 @@ public final class SolarisConfig {
                         "conversion, applied last (after every other color/lighting effect), independent of " +
                         "the Saturation slider (that just partially desaturates; this forces it all the way).")
                 .define("blackAndWhite", false);
+        UNEXPLORED_STYLE = builder
+                .comment("How never-explored chunks render on the fullscreen map. FOG = flat theme fog color " +
+                        "(default). STARFIELD = a deterministic per-position star pattern colored from the " +
+                        "active theme's accent/dim/faint colors. PHOENIX = a deterministic ember pattern in " +
+                        "fixed warm fire colors. CLOUD = soft semi-transparent fog-of-war cloud blobs with real " +
+                        "gaps between them. All three patterns are stable across rebuilds and get pushed back " +
+                        "by real terrain as you explore. Purely cosmetic.")
+                .defineEnum("unexploredStyle", net.phoenixvine.solaris.client.render.UnexploredStyle.FOG);
+        UNEXPLORED_DENSITY = builder
+                .comment("Multiplier on how many stars/embers appear for the starfield/phoenix unexploredStyle. " +
+                        "1.0 = default, higher = denser, lower = sparser. No effect when unexploredStyle is FOG.")
+                .defineInRange("unexploredDensity", 1.0, 0.25, 4.0);
+        UNEXPLORED_BRIGHTNESS = builder
+                .comment("Multiplier on star/ember brightness for the starfield/phoenix unexploredStyle. " +
+                        "1.0 = default. No effect when unexploredStyle is FOG.")
+                .defineInRange("unexploredBrightness", 1.0, 0.25, 2.5);
         SHOW_BLOCK_TOOLTIP = builder
                 .comment("Show the block you're hovering over on the fullscreen map as a tooltip. " +
                         "Reveals block info you may not have discovered in-world yet, so it's off by default.")
@@ -320,7 +339,7 @@ public final class SolarisConfig {
                         "blur, etc.) takes longer than perfLogThresholdMs, plus a periodic summary — a map " +
                         "mod's cost is easy to miss otherwise, since a single slow rebuild just looks like a " +
                         "generic frame hitch with nothing pointing back at what caused it.")
-                .define("perfLogging", true);
+                .define("perfLogging", false);
         PERF_LOG_THRESHOLD_MS = builder
                 .comment("An individual operation slower than this (in milliseconds) gets logged immediately.")
                 .defineInRange("perfLogThresholdMs", 50, 1, 5000);

@@ -8,6 +8,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.phoenixvine.solaris.client.render.MapTileCache;
 import net.phoenixvine.solaris.client.render.ModernPanel;
 import net.phoenixvine.solaris.client.render.SolarisTexture;
 import net.phoenixvine.solaris.config.SolarisConfig;
@@ -139,8 +140,10 @@ public class SolarisDisplaySettingsScreen extends Screen {
 
         addRenderableWidget(Button.builder(deepOnlyLabel(), b -> {
             SolarisConfig.WATER_DEEP_ONLY.set(!SolarisConfig.WATER_DEEP_ONLY.get());
+            SolarisConfig.WATER_DEEP_ONLY.save();
             b.setMessage(deepOnlyLabel());
             SolarisTexture.invalidateAll();
+            MapTileCache.clearAll();
         }).bounds(col1X, y, colW, 18).build());
         addRenderableWidget(new ContrastSlider(col2X, y, colW, 20));
         addRenderableWidget(new BrightnessSlider(col3X, y, colW, 20));
@@ -155,77 +158,88 @@ public class SolarisDisplaySettingsScreen extends Screen {
         addRenderableWidget(new IconScaleSlider(col1X, y, colW, 20));
         addRenderableWidget(Button.builder(labelSideLabel(), b -> {
             SolarisConfig.LABEL_SIDE.set(SolarisConfig.LABEL_SIDE.get().next());
+            SolarisConfig.LABEL_SIDE.save();
             b.setMessage(labelSideLabel());
         }).bounds(col2X, y, colW, 18).build());
         addRenderableWidget(Button.builder(tooltipLabel(), b -> {
             SolarisConfig.SHOW_BLOCK_TOOLTIP.set(!SolarisConfig.SHOW_BLOCK_TOOLTIP.get());
+            SolarisConfig.SHOW_BLOCK_TOOLTIP.save();
             b.setMessage(tooltipLabel());
-        }).bounds(col3X, y, colW, 18).build());
-        y += ROW_H;
-
-        headingY[2] = y;
-        y += HEADING_H;
-
-        addRenderableWidget(Button.builder(mapShapeLabel(), b -> {
-            SolarisConfig.MAP_SHAPE.set(SolarisConfig.MAP_SHAPE.get().next());
-            b.setMessage(mapShapeLabel());
-        }).bounds(col1X, y, colW, 18).build());
-
-        addRenderableWidget(new HillshadingStrengthSlider(col2X, y, colW, 20));
-        addRenderableWidget(Button.builder(minimapRotateLabel(), b -> {
-            SolarisConfig.MINIMAP_ROTATE.set(!SolarisConfig.MINIMAP_ROTATE.get());
-            b.setMessage(minimapRotateLabel());
         }).bounds(col3X, y, colW, 18).build());
         y += ROW_H;
 
         addRenderableWidget(Button.builder(railNetworkLabel(), b -> {
             SolarisConfig.SHOW_RAIL_NETWORK.set(!SolarisConfig.SHOW_RAIL_NETWORK.get());
+            SolarisConfig.SHOW_RAIL_NETWORK.save();
             b.setMessage(railNetworkLabel());
             SolarisTexture.invalidateAll();
         }).bounds(col1X, y, colW, 18).build());
         y += ROW_H;
 
+        headingY[2] = y;
+        y += HEADING_H;
+
+        addRenderableWidget(new HillshadingStrengthSlider(col1X, y, colW, 20));
         addRenderableWidget(new VignetteStrengthSlider(col2X, y, colW, 20));
+        y += ROW_H;
+
+        addRenderableWidget(new UnexploredDensitySlider(col1X, y, colW, 20));
+        addRenderableWidget(new UnexploredBrightnessSlider(col2X, y, colW, 20));
         y += ROW_H;
 
         headingY[3] = y;
         y += HEADING_H;
 
         addRenderableWidget(new MinimapZoomSlider(col1X, y, colW, 20));
-
+        addRenderableWidget(Button.builder(mapShapeLabel(), b -> {
+            SolarisConfig.MAP_SHAPE.set(SolarisConfig.MAP_SHAPE.get().next());
+            SolarisConfig.MAP_SHAPE.save();
+            b.setMessage(mapShapeLabel());
+        }).bounds(col2X, y, colW, 18).build());
         addRenderableWidget(Button.builder(minimapTimeLabel(), b -> {
             SolarisConfig.MINIMAP_SHOW_TIME.set(!SolarisConfig.MINIMAP_SHOW_TIME.get());
+            SolarisConfig.MINIMAP_SHOW_TIME.save();
             b.setMessage(minimapTimeLabel());
         }).bounds(col3X, y, colW, 18).build());
         y += ROW_H;
 
         addRenderableWidget(Button.builder(minimapCoordsLabel(), b -> {
             SolarisConfig.MINIMAP_SHOW_COORDS.set(!SolarisConfig.MINIMAP_SHOW_COORDS.get());
+            SolarisConfig.MINIMAP_SHOW_COORDS.save();
             b.setMessage(minimapCoordsLabel());
         }).bounds(col1X, y, colW, 18).build());
+        addRenderableWidget(Button.builder(minimapRotateLabel(), b -> {
+            SolarisConfig.MINIMAP_ROTATE.set(!SolarisConfig.MINIMAP_ROTATE.get());
+            SolarisConfig.MINIMAP_ROTATE.save();
+            b.setMessage(minimapRotateLabel());
+        }).bounds(col2X, y, colW, 18).build());
     }
 
     private void initWaypointsTab(int x, int y) {
         addRenderableWidget(Button.builder(beamsLabel(), b -> {
             SolarisConfig.WAYPOINT_BEAMS.set(!SolarisConfig.WAYPOINT_BEAMS.get());
+            SolarisConfig.WAYPOINT_BEAMS.save();
             b.setMessage(beamsLabel());
         }).bounds(x + 10, y, BOX_W - 20, 18).build());
         y += ROW_H;
 
         addRenderableWidget(Button.builder(compassLabel(), b -> {
             SolarisConfig.WAYPOINT_COMPASS.set(!SolarisConfig.WAYPOINT_COMPASS.get());
+            SolarisConfig.WAYPOINT_COMPASS.save();
             b.setMessage(compassLabel());
         }).bounds(x + 10, y, BOX_W - 20, 18).build());
         y += ROW_H;
 
         addRenderableWidget(Button.builder(deathMarkersLabel(), b -> {
             SolarisConfig.DEATH_MARKERS.set(!SolarisConfig.DEATH_MARKERS.get());
+            SolarisConfig.DEATH_MARKERS.save();
             b.setMessage(deathMarkersLabel());
         }).bounds(x + 10, y, BOX_W - 20, 18).build());
         y += ROW_H;
 
         addRenderableWidget(Button.builder(planShapesLabel(), b -> {
             SolarisConfig.SHOW_PLAN_SHAPES.set(!SolarisConfig.SHOW_PLAN_SHAPES.get());
+            SolarisConfig.SHOW_PLAN_SHAPES.save();
             b.setMessage(planShapesLabel());
         }).bounds(x + 10, y, BOX_W - 20, 18).build());
     }
@@ -233,6 +247,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
     private void initIntegrationsTab(int x, int y) {
         addRenderableWidget(Button.builder(gtVeinsLabel(), b -> {
             SolarisConfig.SHOW_GT_ORE_VEINS.set(!SolarisConfig.SHOW_GT_ORE_VEINS.get());
+            SolarisConfig.SHOW_GT_ORE_VEINS.save();
             b.setMessage(gtVeinsLabel());
         }).bounds(x + 10, y, BOX_W - 20, 18).build());
     }
@@ -358,6 +373,9 @@ public class SolarisDisplaySettingsScreen extends Screen {
         SolarisConfig.SHOW_CHUNK_GRID.save();
         SolarisConfig.MINIMAP_SHOW_TIME.save();
         SolarisConfig.MINIMAP_SHOW_COORDS.save();
+        SolarisConfig.UNEXPLORED_STYLE.save();
+        SolarisConfig.UNEXPLORED_DENSITY.save();
+        SolarisConfig.UNEXPLORED_BRIGHTNESS.save();
         Minecraft.getInstance().setScreen(parent);
     }
 
@@ -382,6 +400,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
         protected void applyValue() {
             SolarisConfig.SATURATION.set(value * 2.0);
             SolarisTexture.invalidateAll();
+            MapTileCache.clearAll();
         }
     }
 
@@ -401,6 +420,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
         protected void applyValue() {
             SolarisConfig.CONTRAST.set(value * 3.0);
             SolarisTexture.invalidateAll();
+            MapTileCache.clearAll();
         }
     }
 
@@ -420,6 +440,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
         protected void applyValue() {
             SolarisConfig.BRIGHTNESS.set(value * 2.0);
             SolarisTexture.invalidateAll();
+            MapTileCache.clearAll();
         }
     }
 
@@ -439,6 +460,45 @@ public class SolarisDisplaySettingsScreen extends Screen {
         protected void applyValue() {
             SolarisConfig.FOLIAGE_BRIGHTNESS.set(value * 2.0);
             SolarisTexture.invalidateAll();
+            MapTileCache.clearAll();
+        }
+    }
+
+    private static class UnexploredDensitySlider extends AbstractSliderButton {
+
+        UnexploredDensitySlider(int x, int y, int w, int h) {
+            super(x, y, w, h, Component.empty(), (SolarisConfig.UNEXPLORED_DENSITY.get() - 0.25) / 3.75);
+            updateMessage();
+        }
+
+        @Override
+        protected void updateMessage() {
+            setMessage(Component.literal("Density: " + Math.round((0.25 + value * 3.75) * 100) + "%"));
+        }
+
+        @Override
+        protected void applyValue() {
+            SolarisConfig.UNEXPLORED_DENSITY.set(0.25 + value * 3.75);
+            MapTileCache.clearAll();
+        }
+    }
+
+    private static class UnexploredBrightnessSlider extends AbstractSliderButton {
+
+        UnexploredBrightnessSlider(int x, int y, int w, int h) {
+            super(x, y, w, h, Component.empty(), (SolarisConfig.UNEXPLORED_BRIGHTNESS.get() - 0.25) / 2.25);
+            updateMessage();
+        }
+
+        @Override
+        protected void updateMessage() {
+            setMessage(Component.literal("Brightness: " + Math.round((0.25 + value * 2.25) * 100) + "%"));
+        }
+
+        @Override
+        protected void applyValue() {
+            SolarisConfig.UNEXPLORED_BRIGHTNESS.set(0.25 + value * 2.25);
+            MapTileCache.clearAll();
         }
     }
 
@@ -458,6 +518,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
         protected void applyValue() {
             SolarisConfig.WATER_OPACITY.set(value);
             SolarisTexture.invalidateAll();
+            MapTileCache.clearAll();
         }
     }
 
@@ -485,6 +546,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
         protected void applyValue() {
             SolarisConfig.WATER_BLEND_RADIUS.set(radius());
             SolarisTexture.invalidateAll();
+            MapTileCache.clearAll();
         }
     }
 
@@ -542,6 +604,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
         protected void applyValue() {
             SolarisConfig.HILLSHADING_STRENGTH.set(value);
             SolarisTexture.invalidateAll();
+            MapTileCache.clearAll();
         }
     }
 
@@ -561,6 +624,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
         protected void applyValue() {
             SolarisConfig.VIGNETTE_STRENGTH.set(value);
             SolarisTexture.invalidateAll();
+            MapTileCache.clearAll();
         }
     }
 }

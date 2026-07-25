@@ -12,6 +12,7 @@ import net.phoenixvine.solaris.PhoenixSolaris;
 import net.phoenixvine.solaris.api.SolarisAPI;
 import net.phoenixvine.solaris.api.SolarisFeatureState;
 import net.phoenixvine.solaris.client.perf.SolarisProfiler;
+import net.phoenixvine.solaris.client.render.MapTileCache;
 import net.phoenixvine.solaris.client.render.SolarisTexture;
 import net.phoenixvine.solaris.config.SolarisConfig;
 
@@ -21,6 +22,11 @@ import java.util.List;
 public final class LiveChunkRefresh {
 
     private static int tickCounter = 0;
+    private static int taintedRetryTickCounter = 0;
+
+    private static final int TAINTED_RETRY_INTERVAL_TICKS = 20;
+
+    private static final int MAX_FALLBACK_RETRIES = 10;
 
     private LiveChunkRefresh() {}
 
@@ -33,14 +39,22 @@ public final class LiveChunkRefresh {
         Level level = mc.level;
         if (player == null || level == null) return;
 
+        boolean writeEnabled = SolarisAPI.getFeatureState(SolarisAPI.FEATURE_WORLD_MAP, level.dimension().location())
+                .atLeast(SolarisFeatureState.ENABLED);
+        boolean surfaceMap = writeEnabled && !level.dimensionType().hasCeiling();
+
+        if (surfaceMap) MapTileCache.checkNightFactor(level);
+
+        if (surfaceMap && ++taintedRetryTickCounter >= TAINTED_RETRY_INTERVAL_TICKS) {
+            taintedRetryTickCounter = 0;
+            retryTaintedChunks(level);
+        }
+
         int intervalTicks = SolarisConfig.LIVE_REFRESH_INTERVAL_SECONDS.get() * 20;
         if (++tickCounter < intervalTicks) return;
         tickCounter = 0;
 
-        boolean writeEnabled = SolarisAPI.getFeatureState(SolarisAPI.FEATURE_WORLD_MAP, level.dimension().location())
-                .atLeast(SolarisFeatureState.ENABLED);
-
-        if (writeEnabled && !level.dimensionType().hasCeiling()) {
+        if (surfaceMap) {
             long sweepStart = SolarisProfiler.start();
             int radius = Math.min(SolarisConfig.LIVE_REFRESH_RADIUS_CHUNKS.get(),
                     SolarisConfig.WORLD_MAP_WRITE_RANGE_CHUNKS.get());
@@ -56,29 +70,8 @@ public final class LiveChunkRefresh {
                     if (!level.hasChunk(chunkX, chunkZ)) continue;
 
                     ChunkKey key = ChunkKey.of(level, new ChunkPos(chunkX, chunkZ));
-                    SolarisProfiler.time("chunkSample", () -> {
-                        ChunkColorSampler.ColorSample colorSample = ChunkColorSampler.sample(level, key.toChunkPos());
-                        ChunkColorSampler.HeightSample heightSample = ChunkColorSampler.sampleHeights(level,
-                                key.toChunkPos());
-                        ChunkColorCache.put(key, colorSample.pixels);
-                        ChunkLightCache.put(key, colorSample.lightEmitting);
-                        ChunkHeightCache.put(key, heightSample.heights);
-                        ChunkWaterCache.put(key, heightSample.water);
-                        ChunkRailCache.put(key, heightSample.rails);
-                        ChunkWaterTintCache.put(key, colorSample.waterTint);
-                        ChunkWaterDepthCache.put(key, colorSample.waterDepth);
-                        ChunkWaterOceanCache.put(key, colorSample.waterOcean);
-                        ChunkFoliageCache.put(key, colorSample.foliage);
-
-                        PersistentChunkStore.put(key, colorSample.pixels, heightSample.heights,
-                                heightSample.water, colorSample.waterTint, colorSample.waterDepth,
-                                colorSample.waterOcean, colorSample.foliage);
-                        if (colorSample.hadFallback) {
-                            ChunkColorEvents.FALLBACK_TAINTED.add(key);
-                        } else {
-                            ChunkColorEvents.FALLBACK_TAINTED.remove(key);
-                        }
-                    });
+                    SolarisProfiler.time("chunkSample",
+                            () -> ChunkColorEvents.resample(level, key, key.toChunkPos()));
                     refreshedAny = true;
                 }
             }
@@ -99,35 +92,47 @@ public final class LiveChunkRefresh {
                 }
             }
 
-            if (!ChunkColorEvents.FALLBACK_TAINTED.isEmpty()) {
-                for (ChunkKey key : List.copyOf(ChunkColorEvents.FALLBACK_TAINTED)) {
-                    if (!level.hasChunk(key.x(), key.z())) continue;
-                    ChunkColorSampler.ColorSample colorSample = ChunkColorSampler.sample(level, key.toChunkPos());
-                    ChunkColorSampler.HeightSample heightSample = ChunkColorSampler.sampleHeights(level,
-                            key.toChunkPos());
-                    if (colorSample.hadFallback) continue;
-
-                    ChunkColorCache.put(key, colorSample.pixels);
-                    ChunkLightCache.put(key, colorSample.lightEmitting);
-                    ChunkHeightCache.put(key, heightSample.heights);
-                    ChunkWaterCache.put(key, heightSample.water);
-                    ChunkRailCache.put(key, heightSample.rails);
-                    ChunkWaterTintCache.put(key, colorSample.waterTint);
-                    ChunkWaterDepthCache.put(key, colorSample.waterDepth);
-                    ChunkWaterOceanCache.put(key, colorSample.waterOcean);
-                    ChunkFoliageCache.put(key, colorSample.foliage);
-                    PersistentChunkStore.put(key, colorSample.pixels, heightSample.heights, heightSample.water,
-                            colorSample.waterTint, colorSample.waterDepth, colorSample.waterOcean,
-                            colorSample.foliage);
-                    ChunkColorEvents.FALLBACK_TAINTED.remove(key);
-                    refreshedAny = true;
-                }
-            }
             SolarisProfiler.end("liveRefreshSweep", sweepStart);
 
             if (refreshedAny) SolarisTexture.invalidateAll();
         }
 
         PersistentChunkStore.saveDirtyAsync();
+    }
+
+    private static void retryTaintedChunks(Level level) {
+        if (ChunkColorEvents.FALLBACK_TAINTED.isEmpty()) return;
+
+        boolean refreshedAny = false;
+        for (ChunkKey key : List.copyOf(ChunkColorEvents.FALLBACK_TAINTED)) {
+            if (!level.hasChunk(key.x(), key.z())) continue;
+            ChunkColorSampler.ColorSample colorSample = ChunkColorSampler.sample(level, key.toChunkPos());
+            ChunkColorSampler.HeightSample heightSample = ChunkColorSampler.sampleHeights(level, key.toChunkPos());
+            if (colorSample.hadFallback) {
+                int attempts = ChunkColorEvents.FALLBACK_RETRY_COUNT.merge(key, 1, Integer::sum);
+                if (attempts >= MAX_FALLBACK_RETRIES) {
+                    ChunkColorEvents.FALLBACK_TAINTED.remove(key);
+                    ChunkColorEvents.FALLBACK_RETRY_COUNT.remove(key);
+                }
+                continue;
+            }
+            ChunkColorEvents.FALLBACK_RETRY_COUNT.remove(key);
+
+            ChunkColorCache.put(key, colorSample.pixels);
+            ChunkLightCache.put(key, colorSample.lightEmitting);
+            ChunkHeightCache.put(key, heightSample.heights);
+            ChunkWaterCache.put(key, heightSample.water);
+            ChunkRailCache.put(key, heightSample.rails);
+            ChunkWaterTintCache.put(key, colorSample.waterTint);
+            ChunkWaterDepthCache.put(key, colorSample.waterDepth);
+            ChunkWaterOceanCache.put(key, colorSample.waterOcean);
+            ChunkFoliageCache.put(key, colorSample.foliage);
+            PersistentChunkStore.put(key, colorSample.pixels, heightSample.heights, heightSample.water,
+                    colorSample.waterTint, colorSample.waterDepth, colorSample.waterOcean, colorSample.foliage);
+            ChunkColorEvents.FALLBACK_TAINTED.remove(key);
+            MapTileCache.markDirty(key);
+            refreshedAny = true;
+        }
+        if (refreshedAny) SolarisTexture.invalidateAll();
     }
 }

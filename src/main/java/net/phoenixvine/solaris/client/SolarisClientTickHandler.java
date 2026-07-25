@@ -3,19 +3,29 @@ package net.phoenixvine.solaris.client;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.phoenixvine.solaris.PhoenixSolaris;
 import net.phoenixvine.solaris.api.SolarisAPI;
+import net.phoenixvine.solaris.api.event.WaypointEvent;
 import net.phoenixvine.solaris.client.render.MinimapStyle;
 import net.phoenixvine.solaris.client.waypoint.Waypoint;
 import net.phoenixvine.solaris.client.waypoint.WaypointManager;
 import net.phoenixvine.solaris.config.SolarisConfig;
 import net.phoenixvine.solaris.integration.gtceu.GtceuIntegration;
 
+import java.util.HashSet;
+import java.util.Set;
+
 @Mod.EventBusSubscriber(modid = PhoenixSolaris.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public class SolarisClientTickHandler {
+
+    private static final double WAYPOINT_REACH_RADIUS_SQ = 8.0 * 8.0;
+    private static final int WAYPOINT_REACH_CHECK_INTERVAL_TICKS = 10;
+    private static int reachCheckTickCounter = 0;
+    private static final Set<String> NEAR_WAYPOINT_IDS = new HashSet<>();
 
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
@@ -25,6 +35,11 @@ public class SolarisClientTickHandler {
         if (mc.player == null || mc.level == null) return;
 
         if (GtceuIntegration.isAvailable()) GtceuIntegration.init();
+
+        if (++reachCheckTickCounter >= WAYPOINT_REACH_CHECK_INTERVAL_TICKS) {
+            reachCheckTickCounter = 0;
+            checkWaypointsReached(mc);
+        }
 
         while (SolarisKeybinds.OPEN_MAP.consumeClick()) {
             if (mc.screen != null) continue;
@@ -72,5 +87,25 @@ public class SolarisClientTickHandler {
             SolarisConfig.MINIMAP_SHAPE.save();
             mc.player.displayClientMessage(Component.literal("Minimap style: " + next.label), true);
         }
+    }
+
+    private static void checkWaypointsReached(Minecraft mc) {
+        var dimension = mc.level.dimension().location();
+        Set<String> stillNear = new HashSet<>();
+
+        for (Waypoint w : WaypointManager.getVisibleForDimension(dimension)) {
+            boolean inRange = w.distanceSq(mc.player.getX(), mc.player.getY(), mc.player.getZ()) <=
+                    WAYPOINT_REACH_RADIUS_SQ;
+
+            if (inRange) {
+                stillNear.add(w.id);
+                if (!NEAR_WAYPOINT_IDS.contains(w.id)) {
+                    MinecraftForge.EVENT_BUS.post(new WaypointEvent.Reached(mc.player, w));
+                }
+            }
+        }
+
+        NEAR_WAYPOINT_IDS.clear();
+        NEAR_WAYPOINT_IDS.addAll(stillNear);
     }
 }
