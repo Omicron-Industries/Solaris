@@ -240,7 +240,7 @@ public final class WaypointManager {
                         long storedSeed = Long.parseLong(existing.substring(sep + 1));
                         if (storedSeed == seed && !storedId.isEmpty()) return storedId;
                     } catch (NumberFormatException ignored) {
-                        
+
                     }
                 }
             }

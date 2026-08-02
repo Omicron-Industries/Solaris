@@ -98,6 +98,7 @@ public final class LiveChunkRefresh {
         }
 
         PersistentChunkStore.saveDirtyAsync();
+        PersistentCaveStore.saveDirtyAsync();
     }
 
     private static void retryTaintedChunks(Level level) {

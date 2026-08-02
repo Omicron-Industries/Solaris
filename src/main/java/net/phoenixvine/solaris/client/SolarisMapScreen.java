@@ -67,7 +67,7 @@ import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_TEXT;
 public class SolarisMapScreen extends Screen {
 
     private static final int MARGIN = 20;
-    private static final float MIN_ZOOM_OVERSCAN = 1.2f;
+    private static final float MIN_ZOOM_OVERSCAN = 1.0f;
     private static final int BUTTON_R = 9;
     private static final int BUTTON_MARGIN = 14;
     private static final int BUTTON_GAP = 22;
@@ -113,9 +113,15 @@ public class SolarisMapScreen extends Screen {
     private String hoveredMobName;
 
     private static boolean gtceuBroken = false;
+    private final Screen parent;
 
     public SolarisMapScreen() {
+        this(null);
+    }
+
+    public SolarisMapScreen(Screen parent) {
         super(Component.translatable("solaris.map.title"));
+        this.parent = parent;
     }
 
     private static SolarisTexture texture() {
@@ -589,10 +595,10 @@ public class SolarisMapScreen extends Screen {
         } else if (mode == ViewMode.FLAT && !dragging && toolMode == ToolMode.NAVIGATE &&
                 SolarisConfig.SHOW_BLOCK_TOOLTIP.get()) {
 
-                    tooltip = hoveredBlockName(mx, my);
-                } else {
-                    tooltip = null;
-                }
+            tooltip = hoveredBlockName(mx, my);
+        } else {
+            tooltip = null;
+        }
         if (tooltip != null) {
             g.renderTooltip(font, tooltip, mx, my);
         }
@@ -621,7 +627,7 @@ public class SolarisMapScreen extends Screen {
         int frameRight = width - MARGIN;
         int frameTop = MARGIN;
         int frameBottom = height - MARGIN;
-        int gridColor = 0x30FFFFFF;
+        int gridColor = 0x30000000;
         float zoom = viewport.getZoom();
 
         for (int i = 0; i <= size; i += 16) {
@@ -643,7 +649,7 @@ public class SolarisMapScreen extends Screen {
         int frameRight = width - MARGIN;
         int frameTop = MARGIN;
         int frameBottom = height - MARGIN;
-        int gridColor = 0x30FFFFFF;
+        int gridColor = 0x30000000;
 
         int chunkMinX = ((int) Math.floor(viewport.toWorldX(frameLeft, 0))) >> 4;
         int chunkMaxX = ((int) Math.floor(viewport.toWorldX(frameRight, 0))) >> 4;
@@ -1513,5 +1519,10 @@ public class SolarisMapScreen extends Screen {
     @Override
     public boolean isPauseScreen() {
         return false;
+    }
+
+    @Override
+    public void onClose() {
+        minecraft.setScreen(parent);
     }
 }

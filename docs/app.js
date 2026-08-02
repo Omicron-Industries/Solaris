@@ -5,32 +5,18 @@
  * Solaris's in-game "Export for Web Map" button. Nothing here ever leaves the browser: files
  * are read locally via the File API, decompressed with the browser's own DecompressionStream,
  * and rendered straight to a <canvas>. No server, no upload, no build step.
- *
- * .solmap binary layout (big-endian throughout, gzip-wrapped — see
- * SolarisWebExporter#writeSolmap on the Java side for the authoritative source of truth):
- *   magic   int32  = 0x534F4C4D ("SOLM")
- *   version int32  = 1
- *   worldName  UTF (2-byte length prefix + UTF-8 bytes, Java DataOutputStream#writeUTF style)
- *   dimension  UTF
- *   exportedAtEpochMillis int64
- *   chunkCount int32
- *   minChunkX, minChunkZ, maxChunkX, maxChunkZ  int32 each
- *   per chunk (chunkCount times):
- *     chunkX, chunkZ  int32 each
- *     256 x [r, g, b]  (one byte each, row-major z*16+x — no alpha, always opaque)
- *     256 x height     (int16 each, same row-major order)
  */
 
 const MAGIC = 0x534f4c4d;
 const SUPPORTED_VERSION = 1;
 
 const state = {
-  map: null, // { worldName, dimension, exportedAt, minChunkX, minChunkZ, width, height, canvas, baseImageData, heights }
-  waypoints: [], // filtered to the loaded map's dimension
+  map: null,
+  waypoints: [],
   view: { offsetX: 0, offsetY: 0, zoom: 1, minZoom: 0.05, maxZoom: 32 },
   dragging: false,
   lastPointer: null,
-  options: { hillshading: true, chunkGrid: false },
+  options: { hillshading: true, chunkGrid: false, unexploredStyle: "FOG" },
 };
 
 const canvas = document.getElementById("map-canvas");
@@ -55,6 +41,13 @@ document.getElementById("opt-grid").addEventListener("change", (e) => {
   state.options.chunkGrid = e.target.checked;
   render();
 });
+document.getElementById("opt-style").addEventListener("change", (e) => {
+  state.options.unexploredStyle = e.target.value;
+  if (state.map) {
+    rebuildCanvas(state.map);
+    render();
+  }
+});
 
 // ── File loading ─────────────────────────────────────────────────────────────
 
@@ -66,7 +59,7 @@ document.getElementById("waypoints-input").addEventListener("change", (e) => {
 });
 
 ["dragenter", "dragover"].forEach((evt) =>
-  document.body.addEventListener(evt, (e) => e.preventDefault()));
+    document.body.addEventListener(evt, (e) => e.preventDefault()));
 document.body.addEventListener("drop", (e) => {
   e.preventDefault();
   const files = Array.from(e.dataTransfer.files || []);
@@ -81,7 +74,7 @@ async function loadMapFile(file) {
     const buf = await file.arrayBuffer();
     const parsed = await parseSolmap(buf);
     state.map = parsed;
-    state.waypoints = []; // stale until re-matched against the new dimension
+    state.waypoints = [];
     rebuildCanvas(parsed);
     fitToView();
     updateMeta();
@@ -186,52 +179,143 @@ async function parseSolmap(arrayBuffer) {
     width, height, baseImageData: imageData, heights, hasData, canvas: null };
 }
 
-// Same lighting setup as the in-game SolarisTexture#applyHillshading, but with a stronger gain
-// and wider clamp range — the in-game version reads a fresh, dense height sample every pixel of a
-// small moving window, while this reads a coarser, already-exported snapshot, so a 1:1 gain came
-// out too subtle to notice on anything short of a real mountain range.
+// ── Unexplored Style / Java Randomness Port ───────────────────────────────────
+
+function mix64(bx, bz, seed = 0n) {
+  let h = BigInt.asUintN(64, BigInt(bx) * 0x9E3779B97F4A7C15n + BigInt(bz) * 0xBF58476D1CE4E5B9n + BigInt(seed));
+  h = BigInt.asUintN(64, h ^ (h >> 31n));
+  h = BigInt.asUintN(64, h * 0xFF51AFD7ED558CCDn);
+  return BigInt.asUintN(64, h ^ (h >> 33n));
+}
+
+function scaleBrightness(rgba, factor) {
+  return [
+    Math.max(0, Math.min(255, rgba[0] * factor)),
+    Math.max(0, Math.min(255, rgba[1] * factor)),
+    Math.max(0, Math.min(255, rgba[2] * factor)),
+    rgba[3]
+  ];
+}
+
+function getUnexploredPixel(worldX, worldZ, style) {
+  const FOG = [10, 11, 13, 255];
+
+  if (style === "FOG") return FOG;
+
+  if (style === "STARFIELD") {
+    const h = mix64(worldX, worldZ);
+    const bucket = Number(h & 0x3FFn);
+    if (bucket < 3) {
+      const variance = 0.85 + Number((h >> 40n) & 0x2Dn) / 180.0;
+      return scaleBrightness([90, 169, 255, 255], variance); // Accent (#5aa9ff)
+    }
+    if (bucket < 12) {
+      const variance = 0.45 + Number((h >> 40n) & 0x4Fn) / 160.0;
+      return scaleBrightness([45, 90, 140, 255], variance); // Dim (#2d5a8c)
+    }
+    return scaleBrightness(FOG, 0.3); // Space
+  }
+
+  if (style === "PHOENIX") {
+    const h = mix64(worldX, worldZ);
+    const bucket = Number(h & 0x3FFn);
+    if (bucket < 3) {
+      const g = 130 + Number((h >> 40n) & 0x3Fn);
+      const b = 20 + Number((h >> 48n) & 0x1Fn);
+      return [255, g, b, 255];
+    }
+    if (bucket < 14) {
+      const r = 140 + Number((h >> 40n) & 0x3Fn);
+      const g = 40 + Number((h >> 48n) & 0x2Fn);
+      return scaleBrightness([r, g, 8, 255], 0.8);
+    }
+    return [18, 4, 3, 255]; // EMBER_SPACE
+  }
+
+  if (style === "CLOUD") {
+    const blobNoise = (wx, wz, scale, seed) => {
+      const bx = Math.floor(wx / scale);
+      const bz = Math.floor(wz / scale);
+      const h = mix64(bx, bz, seed);
+      return Number(h & 0xFFFFFFn) / 0xFFFFFF;
+    };
+    const coarse = blobNoise(worldX, worldZ, 20, 1n);
+    const fine = blobNoise(worldX, worldZ, 6, 0x9E3779B9n);
+    const combined = coarse * 0.7 + fine * 0.3;
+
+    const coverage = 0.35; // default density mapping
+    const t = Math.max(0, Math.min(1, (combined - (1.0 - coverage)) / coverage));
+
+    if (t <= 0) return [0, 0, 0, 0]; // Show background map
+
+    const alpha = Math.round(Math.min(235, 60 + t * 150));
+    const gray = Math.round(Math.min(240, 190 + t * 40));
+    return [gray, gray, gray, alpha];
+  }
+
+  return FOG;
+}
+
+// ── Image Processing ────────────────────────────────────────────────────────
+
 const LIGHT_X = -0.5, LIGHT_Y = -0.5, LIGHT_Z = 0.8;
 const LIGHT_LEN = Math.sqrt(LIGHT_X * LIGHT_X + LIGHT_Y * LIGHT_Y + LIGHT_Z * LIGHT_Z);
 const FLAT_SHADE = LIGHT_Z / LIGHT_LEN;
-const HILLSHADE_GAIN = 3.2;
+// Adjusted gain from 3.2 to 1.8 to match SolarisTexture.java
+const HILLSHADE_GAIN = 1.8;
 
 function hillshadeFactor(dzdx, dzdy) {
   const nx = -dzdx, ny = -dzdy, nz = 1;
   const nLen = Math.sqrt(nx * nx + ny * ny + nz * nz);
   const shade = (nx * LIGHT_X + ny * LIGHT_Y + nz * LIGHT_Z) / (nLen * LIGHT_LEN);
   const factor = 1 + HILLSHADE_GAIN * (shade - FLAT_SHADE);
-  return Math.max(0.15, Math.min(2.2, factor));
+  // Adjusted clamp limits to match Java counterpart
+  return Math.max(0.3, Math.min(1.8, factor));
 }
 
 function rebuildCanvas(map) {
-  const { width, height, baseImageData, heights, hasData } = map;
+  const { width, height, baseImageData, heights, hasData, minChunkX, minChunkZ } = map;
   const off = document.createElement("canvas");
   off.width = width;
   off.height = height;
   const offCtx = off.getContext("2d");
 
-  if (!state.options.hillshading) {
-    offCtx.putImageData(baseImageData, 0, 0);
-    map.canvas = off;
-    return;
-  }
-
   const shaded = new ImageData(new Uint8ClampedArray(baseImageData.data), width, height);
   const pixels = shaded.data;
+  const style = state.options.unexploredStyle;
+
   for (let z = 0; z < height; z++) {
     for (let x = 0; x < width; x++) {
       const idx = z * width + x;
-      if (!hasData[idx]) continue;
-      const west = x > 0 ? heights[idx - 1] : heights[idx];
-      const east = x < width - 1 ? heights[idx + 1] : heights[idx];
-      const north = z > 0 ? heights[idx - width] : heights[idx];
-      const south = z < height - 1 ? heights[idx + width] : heights[idx];
-      const factor = hillshadeFactor((east - west) * 0.5, (south - north) * 0.5);
-      if (factor === 1) continue;
       const p = idx * 4;
-      pixels[p] = Math.max(0, Math.min(255, pixels[p] * factor));
-      pixels[p + 1] = Math.max(0, Math.min(255, pixels[p + 1] * factor));
-      pixels[p + 2] = Math.max(0, Math.min(255, pixels[p + 2] * factor));
+
+      // Handle Unexplored Chunks
+      if (!hasData[idx]) {
+        const worldX = minChunkX * 16 + x;
+        const worldZ = minChunkZ * 16 + z;
+        const rgba = getUnexploredPixel(worldX, worldZ, style);
+        pixels[p] = rgba[0];
+        pixels[p + 1] = rgba[1];
+        pixels[p + 2] = rgba[2];
+        pixels[p + 3] = rgba[3];
+        continue;
+      }
+
+      // Handle Hillshading for Explored Chunks
+      if (state.options.hillshading) {
+        // hasData checks prevent the "invisible cliff" error on chunk borders
+        const west = (x > 0 && hasData[idx - 1]) ? heights[idx - 1] : heights[idx];
+        const east = (x < width - 1 && hasData[idx + 1]) ? heights[idx + 1] : heights[idx];
+        const north = (z > 0 && hasData[idx - width]) ? heights[idx - width] : heights[idx];
+        const south = (z < height - 1 && hasData[idx + width]) ? heights[idx + width] : heights[idx];
+
+        const factor = hillshadeFactor((east - west) * 0.5, (south - north) * 0.5);
+        if (factor !== 1) {
+          pixels[p] = Math.max(0, Math.min(255, pixels[p] * factor));
+          pixels[p + 1] = Math.max(0, Math.min(255, pixels[p + 1] * factor));
+          pixels[p + 2] = Math.max(0, Math.min(255, pixels[p + 2] * factor));
+        }
+      }
     }
   }
   offCtx.putImageData(shaded, 0, 0);
@@ -273,7 +357,9 @@ function screenToWorld(sx, sy) {
 
 function render() {
   if (!state.map) return;
-  ctx.imageSmoothingEnabled = false;
+
+  // Adjusted for visual smoothing
+  ctx.imageSmoothingEnabled = true;
   ctx.fillStyle = "#0a0b0d";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   const v = state.view;
@@ -300,12 +386,8 @@ function render() {
 function drawChunkGrid() {
   const v = state.view;
   const step = 16 * v.zoom;
-  // Only draw once chunks are genuinely large on screen — at anything resembling a "whole
-  // explored area" zoom level this would otherwise turn into a solid mesh instead of a useful grid.
   if (step < 24) return;
-  // A single semi-transparent color reads as almost invisible against colorful terrain — draw a
-  // dark line offset by 1px next to a light one so there's always contrast, whether the chunk
-  // underneath is bright sand or deep water.
+
   ctx.lineWidth = 1;
   const startX = v.offsetX % step;
   const startY = v.offsetY % step;

@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Solaris Web Map</title>
-<link rel="stylesheet" href="style.css" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Solaris Web Map</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 <div id="app">
@@ -25,6 +25,15 @@
     <div id="options" class="hidden">
       <label class="opt-toggle"><input type="checkbox" id="opt-hillshade" checked /> Hillshading</label>
       <label class="opt-toggle"><input type="checkbox" id="opt-grid" /> Chunk grid</label>
+      <label class="opt-toggle">
+        Style:
+        <select id="opt-style" style="background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px;">
+          <option value="FOG">Fog</option>
+          <option value="STARFIELD">Starfield</option>
+          <option value="PHOENIX">Phoenix</option>
+          <option value="CLOUD">Cloud</option>
+        </select>
+      </label>
     </div>
 
     <div id="meta" class="hidden">
@@ -39,8 +48,8 @@
     <div id="empty-state">
       <p>Drop a <code>.solmap</code> file here, or use the button above.</p>
       <p class="hint">Both files come from Solaris's "Export for Web Map" button on the in-game
-      fullscreen map — nothing here is ever uploaded anywhere, it's all read locally in your
-      browser.</p>
+        fullscreen map — nothing here is ever uploaded anywhere, it's all read locally in your
+        browser.</p>
     </div>
     <canvas id="map-canvas"></canvas>
     <div id="tooltip" class="hidden"></div>

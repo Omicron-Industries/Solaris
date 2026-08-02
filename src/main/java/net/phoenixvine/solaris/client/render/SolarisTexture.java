@@ -26,6 +26,7 @@ import net.phoenixvine.solaris.client.color.ChunkWaterCache;
 import net.phoenixvine.solaris.client.color.ChunkWaterDepthCache;
 import net.phoenixvine.solaris.client.color.ChunkWaterOceanCache;
 import net.phoenixvine.solaris.client.color.ChunkWaterTintCache;
+import net.phoenixvine.solaris.client.color.PersistentCaveStore;
 import net.phoenixvine.solaris.client.color.PersistentChunkStore;
 import net.phoenixvine.solaris.client.overlay.SolarisOverlay;
 import net.phoenixvine.solaris.client.overlay.SolarisOverlayRegistry;
@@ -108,7 +109,7 @@ public class SolarisTexture implements AutoCloseable {
         this.texture = new DynamicTexture(image);
         Minecraft.getInstance().getTextureManager().register(textureId, texture);
 
-        texture.setFilter(true, false);
+        texture.setFilter(false, false);
         this.heights = new int[sizePixels * sizePixels];
         this.water = new boolean[sizePixels * sizePixels];
         this.lightEmitting = new boolean[sizePixels * sizePixels];
@@ -126,6 +127,15 @@ public class SolarisTexture implements AutoCloseable {
 
     public ResourceLocation textureId() {
         return textureId;
+    }
+
+    /**
+     * Whether claim-boundary overlays (e.g. Phoenix Domains) should be drawn for this particular
+     * texture instance — "minimap" and "map" are gated by independent settings, since they're
+     * genuinely separate rendering paths (the corner minimap vs. the fullscreen map).
+     */
+    private boolean claimsOverlaysEnabled() {
+        return "minimap".equals(name) ? SolarisConfig.SHOW_CLAIMS_MINIMAP.get() : SolarisConfig.SHOW_CLAIMS_MAP.get();
     }
 
     public ChunkKey getLastCenter() {
@@ -318,8 +328,15 @@ public class SolarisTexture implements AutoCloseable {
                 boolean[] chunkWaterOcean;
                 boolean[] chunkFoliage;
                 if (underground) {
-                    pixels = caveReveal ? CaveColorSampler.sample(level, key.toChunkPos(), playerY) : null;
-                    unknownColor = caveReveal ? fogColor : hiddenColor;
+                    String dimensionStr = center.dimension().toString();
+                    int yBucket = PersistentCaveStore.yBucket(playerY);
+                    if (caveReveal) {
+                        pixels = CaveColorSampler.sample(level, key.toChunkPos(), playerY);
+                        PersistentCaveStore.put(dimensionStr, chunkX, chunkZ, yBucket, pixels);
+                    } else {
+                        pixels = PersistentCaveStore.get(dimensionStr, chunkX, chunkZ, yBucket);
+                    }
+                    unknownColor = pixels != null ? fogColor : hiddenColor;
 
                     chunkHeights = ChunkHeightCache.get(key);
                     chunkWater = ChunkWaterCache.get(key);
@@ -372,12 +389,14 @@ public class SolarisTexture implements AutoCloseable {
                 long overlayStart = profiling ? System.nanoTime() : 0;
                 int tint = 0;
                 boolean hasTint = false;
-                for (SolarisOverlay overlay : overlays) {
-                    Optional<Integer> color = overlay.colorAt(center.dimension(), chunkX, chunkZ);
-                    if (color.isPresent()) {
-                        tint = color.get();
-                        hasTint = true;
+                if (claimsOverlaysEnabled()) {
+                    for (SolarisOverlay overlay : overlays) {
+                        Optional<Integer> color = overlay.colorAt(center.dimension(), chunkX, chunkZ);
+                        if (color.isPresent()) {
+                            tint = color.get();
+                            hasTint = true;
 
+                        }
                     }
                 }
                 if (profiling) overlayNanos += System.nanoTime() - overlayStart;
@@ -498,7 +517,7 @@ public class SolarisTexture implements AutoCloseable {
             SolarisProfiler.end("upload:full:" + name, uploadStart);
         }
 
-        texture.setFilter(true, false);
+        texture.setFilter(false, false);
         rebuildGeneration++;
         SolarisProfiler.end("textureRebuild:" + name, profileStart);
     }

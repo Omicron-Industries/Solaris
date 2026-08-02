@@ -213,6 +213,21 @@ public class SolarisDisplaySettingsScreen extends Screen {
             SolarisConfig.MINIMAP_ROTATE.save();
             b.setMessage(minimapRotateLabel());
         }).bounds(col2X, y, colW, 18).build());
+        y += ROW_H;
+
+        addRenderableWidget(Button.builder(claimsMapLabel(), b -> {
+            SolarisConfig.SHOW_CLAIMS_MAP.set(!SolarisConfig.SHOW_CLAIMS_MAP.get());
+            SolarisConfig.SHOW_CLAIMS_MAP.save();
+            b.setMessage(claimsMapLabel());
+            MapTileCache.clearAll();
+            SolarisTexture.invalidateAll();
+        }).bounds(col1X, y, colW, 18).build());
+        addRenderableWidget(Button.builder(claimsMinimapLabel(), b -> {
+            SolarisConfig.SHOW_CLAIMS_MINIMAP.set(!SolarisConfig.SHOW_CLAIMS_MINIMAP.get());
+            SolarisConfig.SHOW_CLAIMS_MINIMAP.save();
+            b.setMessage(claimsMinimapLabel());
+            SolarisTexture.invalidateAll();
+        }).bounds(col2X, y, colW, 18).build());
     }
 
     private void initWaypointsTab(int x, int y) {
@@ -301,6 +316,16 @@ public class SolarisDisplaySettingsScreen extends Screen {
         return Component.literal("Minimap Coords: " + (on ? "ON" : "OFF"));
     }
 
+    private Component claimsMapLabel() {
+        boolean on = SolarisConfig.SHOW_CLAIMS_MAP.get();
+        return Component.literal("Claims (Map): " + (on ? "ON" : "OFF"));
+    }
+
+    private Component claimsMinimapLabel() {
+        boolean on = SolarisConfig.SHOW_CLAIMS_MINIMAP.get();
+        return Component.literal("Claims (Minimap): " + (on ? "ON" : "OFF"));
+    }
+
     private Component beamsLabel() {
         boolean on = SolarisConfig.WAYPOINT_BEAMS.get();
         return Component.literal("Waypoint Beams: " + (on ? "ON" : "OFF"));
@@ -376,6 +401,8 @@ public class SolarisDisplaySettingsScreen extends Screen {
         SolarisConfig.UNEXPLORED_STYLE.save();
         SolarisConfig.UNEXPLORED_DENSITY.save();
         SolarisConfig.UNEXPLORED_BRIGHTNESS.save();
+        SolarisConfig.SHOW_CLAIMS_MAP.save();
+        SolarisConfig.SHOW_CLAIMS_MINIMAP.save();
         Minecraft.getInstance().setScreen(parent);
     }
 

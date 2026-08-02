@@ -61,10 +61,12 @@ public final class SolarisConfig {
     public static final ForgeConfigSpec.DoubleValue MINIMAP_ZOOM;
     public static final ForgeConfigSpec.BooleanValue MINIMAP_SHOW_TIME;
     public static final ForgeConfigSpec.BooleanValue MINIMAP_SHOW_COORDS;
+    public static final ForgeConfigSpec.BooleanValue SHOW_CLAIMS_MINIMAP;
     public static final ForgeConfigSpec.BooleanValue SHOW_CHUNK_GRID;
     public static final ForgeConfigSpec.DoubleValue NIGHT_MODE_STRENGTH;
     public static final ForgeConfigSpec.BooleanValue GLOBE_VIEW_ENABLED;
     public static final ForgeConfigSpec.EnumValue<MinimapShape> MAP_SHAPE;
+    public static final ForgeConfigSpec.BooleanValue SHOW_CLAIMS_MAP;
 
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
@@ -95,6 +97,11 @@ public final class SolarisConfig {
         MINIMAP_SHOW_COORDS = builder
                 .comment("Show your current X/Y/Z coordinates on the minimap.")
                 .define("showCoords", false);
+        SHOW_CLAIMS_MINIMAP = builder
+                .comment("Show land-claim boundary overlays (e.g. from Phoenix Domains) on the corner " +
+                        "minimap. Independent of the fullscreen map's own claims toggle. On by default, " +
+                        "matching prior behavior.")
+                .define("showClaims", true);
         builder.pop();
 
         builder.push("map");
@@ -114,6 +121,11 @@ public final class SolarisConfig {
                         "big map too. The clip is fixed to the panel's own frame; terrain still pans/zooms " +
                         "underneath it exactly as before.")
                 .defineEnum("mapShape", MinimapShape.SQUARE);
+        SHOW_CLAIMS_MAP = builder
+                .comment("Show land-claim boundary overlays (e.g. from Phoenix Domains) on the fullscreen " +
+                        "map. Independent of the corner minimap's own claims toggle. On by default, " +
+                        "matching prior behavior.")
+                .define("showClaims", true);
         builder.pop();
 
         builder.push("display");

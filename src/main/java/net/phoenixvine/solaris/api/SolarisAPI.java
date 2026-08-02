@@ -1,6 +1,7 @@
 package net.phoenixvine.solaris.api;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.event.TickEvent;
@@ -182,8 +183,8 @@ public final class SolarisAPI {
         SolarisOverlay previous = SCRIPT_OVERLAYS.remove(id);
         if (previous != null) SolarisOverlayRegistry.unregister(previous);
 
-        SolarisOverlay overlay = (dimension, chunkX, chunkZ) ->
-                java.util.Optional.ofNullable(fn.colorAt(dimension.toString(), chunkX, chunkZ));
+        SolarisOverlay overlay = (dimension, chunkX, chunkZ) -> java.util.Optional
+                .ofNullable(fn.colorAt(dimension.toString(), chunkX, chunkZ));
         SCRIPT_OVERLAYS.put(id, overlay);
         registerOverlay(overlay);
     }
@@ -239,16 +240,16 @@ public final class SolarisAPI {
         return WaypointManager.getAll();
     }
 
-    public static boolean openMap() {
+    public static boolean openMap(Screen previousScreen) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.level == null || mc.screen != null) return false;
+        if (mc.player == null || mc.level == null) return false;
 
         ResourceLocation dimension = mc.level.dimension().location();
         boolean gatesOpen = isFeatureEnabled(FEATURE_FULLSCREEN_MAP, dimension) &&
                 getFeatureState(FEATURE_WORLD_MAP, dimension).atLeast(SolarisFeatureState.VISIBLE);
         if (!gatesOpen) return false;
 
-        mc.setScreen(new SolarisMapScreen());
+        mc.setScreen(new SolarisMapScreen(previousScreen));
         return true;
     }
 
@@ -285,8 +286,7 @@ public final class SolarisAPI {
         MapTileCache.clearAll();
     }
 
-    private static final Map<ResourceLocation, UnexploredStyle> DIMENSION_UNEXPLORED_STYLE =
-            new ConcurrentHashMap<>();
+    private static final Map<ResourceLocation, UnexploredStyle> DIMENSION_UNEXPLORED_STYLE = new ConcurrentHashMap<>();
 
     public static void setUnexploredStyle(ResourceLocation dimension, UnexploredStyle style) {
         DIMENSION_UNEXPLORED_STYLE.put(dimension, style);

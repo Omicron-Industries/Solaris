@@ -300,11 +300,13 @@ public final class MapTileCache {
 
                 int tint = 0;
                 boolean hasTint = false;
-                for (SolarisOverlay overlay : overlays) {
-                    Optional<Integer> color = overlay.colorAt(key.dimension(), chunkX, chunkZ);
-                    if (color.isPresent()) {
-                        tint = color.get();
-                        hasTint = true;
+                if (SolarisConfig.SHOW_CLAIMS_MAP.get()) {
+                    for (SolarisOverlay overlay : overlays) {
+                        Optional<Integer> color = overlay.colorAt(key.dimension(), chunkX, chunkZ);
+                        if (color.isPresent()) {
+                            tint = color.get();
+                            hasTint = true;
+                        }
                     }
                 }
 

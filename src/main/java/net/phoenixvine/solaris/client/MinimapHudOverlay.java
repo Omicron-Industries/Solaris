@@ -3,8 +3,10 @@ package net.phoenixvine.solaris.client;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
 import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -47,17 +49,54 @@ public class MinimapHudOverlay {
         return texture;
     }
 
+    private static boolean isVisible(Minecraft mc) {
+        if (mc.player == null || mc.level == null || mc.options.hideGui || mc.screen != null) return false;
+        return SolarisAPI.getFeatureState(SolarisAPI.FEATURE_MINIMAP, mc.level.dimension().location())
+                .atLeast(SolarisFeatureState.VISIBLE);
+    }
+
+    /**
+     * Screen-space bounding box the minimap currently occupies — same square region every shape
+     * (circle/polygon) is inscribed within, used both for rendering and for scroll-to-zoom hit-testing.
+     */
+    private static int[] bounds(Minecraft mc) {
+        int screenSize = SolarisConfig.MINIMAP_SIZE.get();
+        int screenW = mc.getWindow().getGuiScaledWidth();
+        return new int[] { screenW - screenSize - MARGIN, MARGIN, screenSize };
+    }
+
+    private static final double ZOOM_SCROLL_STEP = 0.5;
+
+    /**
+     * Scrolling while hovering the minimap AND holding the "cycle minimap style" keybind adjusts
+     * its zoom — held, not just tapped, so a bare scroll (e.g. switching hotbar slots near the
+     * corner) doesn't also change the minimap zoom. Cancelled while active so it doesn't also
+     * cycle the hotbar's selected slot underneath.
+     */
+    @SubscribeEvent
+    public static void onMouseScroll(InputEvent.MouseScrollingEvent event) {
+        Minecraft mc = Minecraft.getInstance();
+        if (!isVisible(mc)) return;
+        if (!SolarisKeybinds.CYCLE_MINIMAP_STYLE.isDown()) return;
+
+        double mx = mc.mouseHandler.xpos() * mc.getWindow().getGuiScaledWidth() / mc.getWindow().getScreenWidth();
+        double my = mc.mouseHandler.ypos() * mc.getWindow().getGuiScaledHeight() / mc.getWindow().getScreenHeight();
+        int[] b = bounds(mc);
+        if (mx < b[0] || mx > b[0] + b[2] || my < b[1] || my > b[1] + b[2]) return;
+
+        double zoom = Mth.clamp(SolarisConfig.MINIMAP_ZOOM.get() + event.getScrollDelta() * ZOOM_SCROLL_STEP, 1.0,
+                8.0);
+        SolarisConfig.MINIMAP_ZOOM.set(zoom);
+        SolarisConfig.MINIMAP_ZOOM.save();
+        event.setCanceled(true);
+    }
+
     @SubscribeEvent
     public static void onRenderHud(RenderGuiOverlayEvent.Post event) {
         if (event.getOverlay() != VanillaGuiOverlay.HOTBAR.type()) return;
 
         Minecraft mc = Minecraft.getInstance();
-
-        if (mc.player == null || mc.level == null || mc.options.hideGui || mc.screen != null) return;
-        if (!SolarisAPI.getFeatureState(SolarisAPI.FEATURE_MINIMAP, mc.level.dimension().location())
-                .atLeast(SolarisFeatureState.VISIBLE)) {
-            return;
-        }
+        if (!isVisible(mc)) return;
 
         SolarisTexture tex = texture();
         int screenSize = SolarisConfig.MINIMAP_SIZE.get();
@@ -83,9 +122,9 @@ public class MinimapHudOverlay {
         int originX = TextureAddressing.properMod(chunkX - tex.getRadiusChunks(), spanChunks) * 16;
         int originZ = TextureAddressing.properMod(chunkZ - tex.getRadiusChunks(), spanChunks) * 16;
 
-        int screenW = mc.getWindow().getGuiScaledWidth();
-        int x = screenW - screenSize - MARGIN;
-        int y = MARGIN;
+        int[] b = bounds(mc);
+        int x = b[0];
+        int y = b[1];
 
         GuiGraphics g = event.getGuiGraphics();
         MinimapShape shape = SolarisConfig.MINIMAP_SHAPE.get();
@@ -127,8 +166,8 @@ public class MinimapHudOverlay {
             int wy = y + (int) ((wPixelZ - v) * scale);
 
             if (shape != MinimapShape.SQUARE && !containsPoint(shape, wx - x, wy - y, screenSize)) continue;
-            g.fill(wx - 2, wy - 2, wx + 2, wy + 2, 0xFF000000);
-            g.fill(wx - 1, wy - 1, wx + 1, wy + 1, w.colorArgb());
+            g.fill(wx - 3, wy - 3, wx + 3, wy + 3, 0xFF000000);
+            g.fill(wx - 2, wy - 2, wx + 2, wy + 2, w.colorArgb());
         }
 
         g.pose().popPose();
@@ -137,7 +176,7 @@ public class MinimapHudOverlay {
         if (shape == MinimapShape.CIRCLE) {
             SmoothShapes.drawRing(g, cx, cy, radius + 3, C_BORDER);
         } else if (shape.isPolygon()) {
-            drawPolygonOutline(g, shape, cx, cy, screenSize + 6);
+            drawPolygonOutline(g, shape, cx, cy, screenSize);
         }
 
         PlayerArrow.draw(g, cx, cy, 6, rotate ? 180f : mc.player.getYRot(), C_ACCENT,

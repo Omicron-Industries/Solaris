@@ -44,7 +44,7 @@ public class SolarisClientTickHandler {
         while (SolarisKeybinds.OPEN_MAP.consumeClick()) {
             if (mc.screen != null) continue;
 
-            if (!SolarisAPI.openMap()) {
+            if (!SolarisAPI.openMap(null)) {
                 mc.player.displayClientMessage(Component.literal("The map isn't available right now."), true);
             }
         }
