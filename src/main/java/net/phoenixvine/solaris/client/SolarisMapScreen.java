@@ -595,10 +595,10 @@ public class SolarisMapScreen extends Screen {
         } else if (mode == ViewMode.FLAT && !dragging && toolMode == ToolMode.NAVIGATE &&
                 SolarisConfig.SHOW_BLOCK_TOOLTIP.get()) {
 
-            tooltip = hoveredBlockName(mx, my);
-        } else {
-            tooltip = null;
-        }
+                    tooltip = hoveredBlockName(mx, my);
+                } else {
+                    tooltip = null;
+                }
         if (tooltip != null) {
             g.renderTooltip(font, tooltip, mx, my);
         }

@@ -103,8 +103,6 @@ async function loadWaypointsFile(file) {
   }
 }
 
-// ── .solmap parsing ──────────────────────────────────────────────────────────
-
 async function parseSolmap(arrayBuffer) {
   if (typeof DecompressionStream === "undefined") {
     throw new Error("Your browser doesn't support DecompressionStream — try a current " +
@@ -158,6 +156,7 @@ async function parseSolmap(arrayBuffer) {
     const cz = i32();
     const baseX = (cx - minChunkX) * 16;
     const baseZ = (cz - minChunkZ) * 16;
+
     for (let p = 0; p < 256; p++) {
       const r = u8(), g = u8(), b = u8();
       const localX = p % 16, localZ = (p / 16) | 0;
@@ -167,11 +166,23 @@ async function parseSolmap(arrayBuffer) {
       pixels[idx + 1] = g;
       pixels[idx + 2] = b;
       pixels[idx + 3] = 255;
-      hasData[pixelIdx] = 1;
+      hasData[pixelIdx] = 1; // Temporarily assume it's valid
     }
+
     for (let p = 0; p < 256; p++) {
       const localX = p % 16, localZ = (p / 16) | 0;
-      heights[(baseZ + localZ) * width + (baseX + localX)] = i16();
+      const pixelIdx = (baseZ + localZ) * width + (baseX + localX);
+      const h = i16();
+      heights[pixelIdx] = h;
+
+      // THE FIX: Check if this pixel is actually an ungenerated/empty space inside the chunk.
+      // Java sends ungenerated heights as Short.MIN_VALUE (-32768) and colors as pure black.
+      const idx = pixelIdx * 4;
+      const isBlack = pixels[idx] === 0 && pixels[idx + 1] === 0 && pixels[idx + 2] === 0;
+
+      if (h <= -32000 || isBlack) {
+        hasData[pixelIdx] = 0;
+      }
     }
   }
 
