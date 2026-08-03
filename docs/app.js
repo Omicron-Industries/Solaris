@@ -37,17 +37,19 @@ document.getElementById("opt-hillshade").addEventListener("change", (e) => {
     render();
   }
 });
+
 document.getElementById("opt-grid").addEventListener("change", (e) => {
   state.options.chunkGrid = e.target.checked;
   render();
 });
-document.getElementById("opt-style").addEventListener("change", (e) => {
-  state.options.unexploredStyle = e.target.value;
-  if (state.map) {
-    rebuildCanvas(state.map);
+
+const optStyleEl = document.getElementById("opt-style");
+if (optStyleEl) {
+  optStyleEl.addEventListener("change", (e) => {
+    state.options.unexploredStyle = e.target.value;
     render();
-  }
-});
+  });
+}
 
 // ── File loading ─────────────────────────────────────────────────────────────
 
@@ -103,10 +105,11 @@ async function loadWaypointsFile(file) {
   }
 }
 
+// ── .solmap parsing ──────────────────────────────────────────────────────────
+
 async function parseSolmap(arrayBuffer) {
   if (typeof DecompressionStream === "undefined") {
-    throw new Error("Your browser doesn't support DecompressionStream — try a current " +
-        "Chrome, Edge, Firefox, or Safari.");
+    throw new Error("Your browser doesn't support DecompressionStream — try a current Chrome, Edge, Firefox, or Safari.");
   }
   const decompressed = await new Response(
       new Blob([arrayBuffer]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
@@ -142,8 +145,7 @@ async function parseSolmap(arrayBuffer) {
   const width = (maxChunkX - minChunkX + 1) * 16;
   const height = (maxChunkZ - minChunkZ + 1) * 16;
   if (width <= 0 || height <= 0 || width > 32000 || height > 32000) {
-    throw new Error("Map bounds are too large to render in a single canvas (" + width + "x" +
-        height + " px) — this is a known v1 limitation for extremely large explored areas.");
+    throw new Error("Map bounds are too large to render in a single canvas (" + width + "x" + height + " px).");
   }
 
   const imageData = new ImageData(width, height);
@@ -166,7 +168,7 @@ async function parseSolmap(arrayBuffer) {
       pixels[idx + 1] = g;
       pixels[idx + 2] = b;
       pixels[idx + 3] = 255;
-      hasData[pixelIdx] = 1; // Temporarily assume it's valid
+      hasData[pixelIdx] = 1;
     }
 
     for (let p = 0; p < 256; p++) {
@@ -175,13 +177,14 @@ async function parseSolmap(arrayBuffer) {
       const h = i16();
       heights[pixelIdx] = h;
 
-      // THE FIX: Check if this pixel is actually an ungenerated/empty space inside the chunk.
-      // Java sends ungenerated heights as Short.MIN_VALUE (-32768) and colors as pure black.
       const idx = pixelIdx * 4;
-      const isBlack = pixels[idx] === 0 && pixels[idx + 1] === 0 && pixels[idx + 2] === 0;
+      const r = pixels[idx], g = pixels[idx + 1], b = pixels[idx + 2];
 
-      if (h <= -32000 || isBlack) {
+      // Check if pixel is Java's default unexplored fog color (10, 11, 13) or black or min height
+      const isUnexploredColor = (r <= 14 && g <= 14 && b <= 15);
+      if (h <= -32000 || isUnexploredColor) {
         hasData[pixelIdx] = 0;
+        pixels[idx + 3] = 0; // Make pixel transparent so background shows through
       }
     }
   }
@@ -190,7 +193,7 @@ async function parseSolmap(arrayBuffer) {
     width, height, baseImageData: imageData, heights, hasData, canvas: null };
 }
 
-// ── Unexplored Style / Java Randomness Port ───────────────────────────────────
+// ── Static Unexplored Pattern Generator ──────────────────────────────────────
 
 function mix64(bx, bz, seed = 0n) {
   let h = BigInt.asUintN(64, BigInt(bx) * 0x9E3779B97F4A7C15n + BigInt(bz) * 0xBF58476D1CE4E5B9n + BigInt(seed));
@@ -208,27 +211,27 @@ function scaleBrightness(rgba, factor) {
   ];
 }
 
-function getUnexploredPixel(worldX, worldZ, style) {
+function getUnexploredPixel(x, z, style) {
   const FOG = [10, 11, 13, 255];
 
   if (style === "FOG") return FOG;
 
   if (style === "STARFIELD") {
-    const h = mix64(worldX, worldZ);
+    const h = mix64(x, z);
     const bucket = Number(h & 0x3FFn);
     if (bucket < 3) {
       const variance = 0.85 + Number((h >> 40n) & 0x2Dn) / 180.0;
-      return scaleBrightness([90, 169, 255, 255], variance); // Accent (#5aa9ff)
+      return scaleBrightness([90, 169, 255, 255], variance);
     }
     if (bucket < 12) {
       const variance = 0.45 + Number((h >> 40n) & 0x4Fn) / 160.0;
-      return scaleBrightness([45, 90, 140, 255], variance); // Dim (#2d5a8c)
+      return scaleBrightness([45, 90, 140, 255], variance);
     }
-    return scaleBrightness(FOG, 0.3); // Space
+    return scaleBrightness(FOG, 0.3);
   }
 
   if (style === "PHOENIX") {
-    const h = mix64(worldX, worldZ);
+    const h = mix64(x, z);
     const bucket = Number(h & 0x3FFn);
     if (bucket < 3) {
       const g = 130 + Number((h >> 40n) & 0x3Fn);
@@ -240,7 +243,7 @@ function getUnexploredPixel(worldX, worldZ, style) {
       const g = 40 + Number((h >> 48n) & 0x2Fn);
       return scaleBrightness([r, g, 8, 255], 0.8);
     }
-    return [18, 4, 3, 255]; // EMBER_SPACE
+    return [18, 4, 3, 255];
   }
 
   if (style === "CLOUD") {
@@ -250,14 +253,14 @@ function getUnexploredPixel(worldX, worldZ, style) {
       const h = mix64(bx, bz, seed);
       return Number(h & 0xFFFFFFn) / 0xFFFFFF;
     };
-    const coarse = blobNoise(worldX, worldZ, 20, 1n);
-    const fine = blobNoise(worldX, worldZ, 6, 0x9E3779B9n);
+    const coarse = blobNoise(x, z, 20, 1n);
+    const fine = blobNoise(x, z, 6, 0x9E3779B9n);
     const combined = coarse * 0.7 + fine * 0.3;
 
-    const coverage = 0.35; // default density mapping
+    const coverage = 0.35;
     const t = Math.max(0, Math.min(1, (combined - (1.0 - coverage)) / coverage));
 
-    if (t <= 0) return [0, 0, 0, 0]; // Show background map
+    if (t <= 0) return FOG;
 
     const alpha = Math.round(Math.min(235, 60 + t * 150));
     const gray = Math.round(Math.min(240, 190 + t * 40));
@@ -267,12 +270,52 @@ function getUnexploredPixel(worldX, worldZ, style) {
   return FOG;
 }
 
-// ── Image Processing ────────────────────────────────────────────────────────
+let bgCanvas = null;
+let bgCtx = null;
+let lastBgWidth = 0;
+let lastBgHeight = 0;
+let lastBgStyle = "";
+
+function renderUnexploredBackground(targetCtx, w, h, style) {
+  if (style === "FOG") {
+    targetCtx.fillStyle = "#0a0b0d";
+    targetCtx.fillRect(0, 0, w, h);
+    return;
+  }
+
+  if (!bgCanvas || lastBgWidth !== w || lastBgHeight !== h || lastBgStyle !== style) {
+    bgCanvas = document.createElement("canvas");
+    bgCanvas.width = w;
+    bgCanvas.height = h;
+    bgCtx = bgCanvas.getContext("2d");
+
+    const imgData = bgCtx.createImageData(w, h);
+    const data = imgData.data;
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const rgba = getUnexploredPixel(x, y, style);
+        const idx = (y * w + x) * 4;
+        data[idx] = rgba[0];
+        data[idx + 1] = rgba[1];
+        data[idx + 2] = rgba[2];
+        data[idx + 3] = rgba[3];
+      }
+    }
+    bgCtx.putImageData(imgData, 0, 0);
+    lastBgWidth = w;
+    lastBgHeight = h;
+    lastBgStyle = style;
+  }
+
+  targetCtx.drawImage(bgCanvas, 0, 0);
+}
+
+// ── Hillshading & Image Processing ──────────────────────────────────────────
 
 const LIGHT_X = -0.5, LIGHT_Y = -0.5, LIGHT_Z = 0.8;
 const LIGHT_LEN = Math.sqrt(LIGHT_X * LIGHT_X + LIGHT_Y * LIGHT_Y + LIGHT_Z * LIGHT_Z);
 const FLAT_SHADE = LIGHT_Z / LIGHT_LEN;
-// Adjusted gain from 3.2 to 1.8 to match SolarisTexture.java
 const HILLSHADE_GAIN = 1.8;
 
 function hillshadeFactor(dzdx, dzdy) {
@@ -280,12 +323,11 @@ function hillshadeFactor(dzdx, dzdy) {
   const nLen = Math.sqrt(nx * nx + ny * ny + nz * nz);
   const shade = (nx * LIGHT_X + ny * LIGHT_Y + nz * LIGHT_Z) / (nLen * LIGHT_LEN);
   const factor = 1 + HILLSHADE_GAIN * (shade - FLAT_SHADE);
-  // Adjusted clamp limits to match Java counterpart
   return Math.max(0.3, Math.min(1.8, factor));
 }
 
 function rebuildCanvas(map) {
-  const { width, height, baseImageData, heights, hasData, minChunkX, minChunkZ } = map;
+  const { width, height, baseImageData, heights, hasData } = map;
   const off = document.createElement("canvas");
   off.width = width;
   off.height = height;
@@ -293,28 +335,18 @@ function rebuildCanvas(map) {
 
   const shaded = new ImageData(new Uint8ClampedArray(baseImageData.data), width, height);
   const pixels = shaded.data;
-  const style = state.options.unexploredStyle;
 
   for (let z = 0; z < height; z++) {
     for (let x = 0; x < width; x++) {
       const idx = z * width + x;
       const p = idx * 4;
 
-      // Handle Unexplored Chunks
       if (!hasData[idx]) {
-        const worldX = minChunkX * 16 + x;
-        const worldZ = minChunkZ * 16 + z;
-        const rgba = getUnexploredPixel(worldX, worldZ, style);
-        pixels[p] = rgba[0];
-        pixels[p + 1] = rgba[1];
-        pixels[p + 2] = rgba[2];
-        pixels[p + 3] = rgba[3];
+        pixels[p + 3] = 0; // Transparent
         continue;
       }
 
-      // Handle Hillshading for Explored Chunks
       if (state.options.hillshading) {
-        // hasData checks prevent the "invisible cliff" error on chunk borders
         const west = (x > 0 && hasData[idx - 1]) ? heights[idx - 1] : heights[idx];
         const east = (x < width - 1 && hasData[idx + 1]) ? heights[idx + 1] : heights[idx];
         const north = (z > 0 && hasData[idx - width]) ? heights[idx - width] : heights[idx];
@@ -369,14 +401,15 @@ function screenToWorld(sx, sy) {
 function render() {
   if (!state.map) return;
 
-  // Adjusted for visual smoothing
-  ctx.imageSmoothingEnabled = true;
-  ctx.fillStyle = "#0a0b0d";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  const v = state.view;
-  ctx.drawImage(state.map.canvas, v.offsetX, v.offsetY, state.map.width * v.zoom,
-      state.map.height * v.zoom);
+  // 1. Render Fullscreen Unexplored Style Pattern across entire canvas
+  renderUnexploredBackground(ctx, canvas.width, canvas.height, state.options.unexploredStyle);
 
+  // 2. Render World Map over the background
+  ctx.imageSmoothingEnabled = true;
+  const v = state.view;
+  ctx.drawImage(state.map.canvas, v.offsetX, v.offsetY, state.map.width * v.zoom, state.map.height * v.zoom);
+
+  // 3. Render Overlays
   if (state.options.chunkGrid) drawChunkGrid();
 
   for (const w of state.waypoints) {
