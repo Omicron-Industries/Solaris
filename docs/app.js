@@ -2,13 +2,10 @@
 
 /*
  * Solaris Web Map — a static, fully client-side viewer for the ".solmap" files produced by
- * Solaris's in-game "Export for Web Map" button. Nothing here ever leaves the browser: files
- * are read locally via the File API, decompressed with the browser's own DecompressionStream,
- * and rendered straight to a <canvas>. No server, no upload, no build step.
+ * Solaris's in-game "Export for Web Map" button.
  */
 
 const MAGIC = 0x534f4c4d;
-const SUPPORTED_VERSION = 1;
 
 const state = {
   map: null,
@@ -109,7 +106,7 @@ async function loadWaypointsFile(file) {
 
 async function parseSolmap(arrayBuffer) {
   if (typeof DecompressionStream === "undefined") {
-    throw new Error("Your browser doesn't support DecompressionStream — try a current Chrome, Edge, Firefox, or Safari.");
+    throw new Error("Your browser doesn't support DecompressionStream.");
   }
   const decompressed = await new Response(
       new Blob([arrayBuffer]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
@@ -130,8 +127,10 @@ async function parseSolmap(arrayBuffer) {
   };
 
   if (i32() !== MAGIC) throw new Error("Not a Solaris .solmap file (bad magic number).");
+
   const version = i32();
-  if (version !== SUPPORTED_VERSION) throw new Error("Unsupported .solmap version " + version + ".");
+  if (version !== 1 && version !== 2) throw new Error("Unsupported .solmap version " + version + ".");
+  const isV2 = version >= 2;
 
   const worldName = utf();
   const dimension = utf();
@@ -145,13 +144,15 @@ async function parseSolmap(arrayBuffer) {
   const width = (maxChunkX - minChunkX + 1) * 16;
   const height = (maxChunkZ - minChunkZ + 1) * 16;
   if (width <= 0 || height <= 0 || width > 32000 || height > 32000) {
-    throw new Error("Map bounds are too large to render in a single canvas (" + width + "x" + height + " px).");
+    throw new Error("Map bounds are too large to render in a single canvas.");
   }
 
   const imageData = new ImageData(width, height);
   const pixels = imageData.data;
   const heights = new Int16Array(width * height);
   const hasData = new Uint8Array(width * height);
+  const waterMap = new Uint8Array(width * height);
+  const waterDepthMap = new Uint8Array(width * height);
 
   for (let c = 0; c < chunkCount; c++) {
     const cx = i32();
@@ -161,14 +162,24 @@ async function parseSolmap(arrayBuffer) {
 
     for (let p = 0; p < 256; p++) {
       const r = u8(), g = u8(), b = u8();
+      let isWater = 0, wDepth = 0;
+      if (isV2) {
+        isWater = u8();
+        wDepth = u8();
+      }
+
       const localX = p % 16, localZ = (p / 16) | 0;
       const pixelIdx = (baseZ + localZ) * width + (baseX + localX);
       const idx = pixelIdx * 4;
+
       pixels[idx] = r;
       pixels[idx + 1] = g;
       pixels[idx + 2] = b;
       pixels[idx + 3] = 255;
+
       hasData[pixelIdx] = 1;
+      waterMap[pixelIdx] = isWater;
+      waterDepthMap[pixelIdx] = wDepth;
     }
 
     for (let p = 0; p < 256; p++) {
@@ -180,17 +191,16 @@ async function parseSolmap(arrayBuffer) {
       const idx = pixelIdx * 4;
       const r = pixels[idx], g = pixels[idx + 1], b = pixels[idx + 2];
 
-      // Check if pixel is Java's default unexplored fog color (10, 11, 13) or black or min height
       const isUnexploredColor = (r <= 14 && g <= 14 && b <= 15);
       if (h <= -32000 || isUnexploredColor) {
         hasData[pixelIdx] = 0;
-        pixels[idx + 3] = 0; // Make pixel transparent so background shows through
+        pixels[idx + 3] = 0;
       }
     }
   }
 
   return { worldName, dimension, exportedAt, minChunkX, minChunkZ, maxChunkX, maxChunkZ,
-    width, height, baseImageData: imageData, heights, hasData, canvas: null };
+    width, height, baseImageData: imageData, heights, hasData, waterMap, waterDepthMap, canvas: null };
 }
 
 // ── Static Unexplored Pattern Generator ──────────────────────────────────────
@@ -213,7 +223,6 @@ function scaleBrightness(rgba, factor) {
 
 function getUnexploredPixel(x, z, style) {
   const FOG = [10, 11, 13, 255];
-
   if (style === "FOG") return FOG;
 
   if (style === "STARFIELD") {
@@ -266,7 +275,6 @@ function getUnexploredPixel(x, z, style) {
     const gray = Math.round(Math.min(240, 190 + t * 40));
     return [gray, gray, gray, alpha];
   }
-
   return FOG;
 }
 
@@ -307,27 +315,26 @@ function renderUnexploredBackground(targetCtx, w, h, style) {
     lastBgHeight = h;
     lastBgStyle = style;
   }
-
   targetCtx.drawImage(bgCanvas, 0, 0);
 }
 
-// ── Hillshading & Image Processing ──────────────────────────────────────────
+// ── Image Processing ────────────────────────────────────────────────────────
 
 const LIGHT_X = -0.5, LIGHT_Y = -0.5, LIGHT_Z = 0.8;
 const LIGHT_LEN = Math.sqrt(LIGHT_X * LIGHT_X + LIGHT_Y * LIGHT_Y + LIGHT_Z * LIGHT_Z);
 const FLAT_SHADE = LIGHT_Z / LIGHT_LEN;
 const HILLSHADE_GAIN = 1.8;
 
-function hillshadeFactor(dzdx, dzdy) {
+function hillshadeFactor(dzdx, dzdy, gain) {
   const nx = -dzdx, ny = -dzdy, nz = 1;
   const nLen = Math.sqrt(nx * nx + ny * ny + nz * nz);
   const shade = (nx * LIGHT_X + ny * LIGHT_Y + nz * LIGHT_Z) / (nLen * LIGHT_LEN);
-  const factor = 1 + HILLSHADE_GAIN * (shade - FLAT_SHADE);
+  const factor = 1 + gain * (shade - FLAT_SHADE);
   return Math.max(0.3, Math.min(1.8, factor));
 }
 
 function rebuildCanvas(map) {
-  const { width, height, baseImageData, heights, hasData } = map;
+  const { width, height, baseImageData, heights, hasData, waterMap, waterDepthMap } = map;
   const off = document.createElement("canvas");
   off.width = width;
   off.height = height;
@@ -336,15 +343,72 @@ function rebuildCanvas(map) {
   const shaded = new ImageData(new Uint8ClampedArray(baseImageData.data), width, height);
   const pixels = shaded.data;
 
+  // 1. Smart Biome & Water Blur Pass
+  const temp = new Uint8ClampedArray(pixels);
+  const radius = 2;
+
+  for (let z = 0; z < height; z++) {
+    for (let x = 0; x < width; x++) {
+      const idx = z * width + x;
+      if (!hasData[idx]) continue;
+
+      const nearSeam = (x % 16 < radius || x % 16 > 15 - radius || z % 16 < radius || z % 16 > 15 - radius);
+      const isWater = waterMap && waterMap[idx];
+
+      if (!nearSeam && !isWater) continue;
+
+      let r = 0, g = 0, b = 0, count = 0;
+      const pxP = idx * 4;
+
+      for (let dz = -radius; dz <= radius; dz++) {
+        const nz = z + dz;
+        if (nz < 0 || nz >= height) continue;
+        for (let dx = -radius; dx <= radius; dx++) {
+          const nx = x + dx;
+          if (nx < 0 || nx >= width) continue;
+
+          const nIdx = nz * width + nx;
+          if (hasData[nIdx]) {
+            const p = nIdx * 4;
+
+            if (isWater) {
+              if (waterMap[nIdx]) {
+                r += temp[p]; g += temp[p+1]; b += temp[p+2]; count++;
+              }
+            } else {
+              // Heuristic: Blur grass/leaves by blending pixels that are close in RGB distance.
+              // This prevents coastlines and stark paths from being destroyed while smoothing biome boundaries.
+              const dr = temp[p] - temp[pxP];
+              const dg = temp[p+1] - temp[pxP+1];
+              const db = temp[p+2] - temp[pxP+2];
+              if (Math.sqrt(dr*dr + dg*dg + db*db) < 45) {
+                r += temp[p]; g += temp[p+1]; b += temp[p+2]; count++;
+              }
+            }
+          }
+        }
+      }
+
+      if (count > 0) {
+        pixels[pxP] = r / count;
+        pixels[pxP+1] = g / count;
+        pixels[pxP+2] = b / count;
+      }
+    }
+  }
+
+  // 2. Hillshading and Water Relief Pass
   for (let z = 0; z < height; z++) {
     for (let x = 0; x < width; x++) {
       const idx = z * width + x;
       const p = idx * 4;
 
       if (!hasData[idx]) {
-        pixels[p + 3] = 0; // Transparent
+        pixels[p + 3] = 0;
         continue;
       }
+
+      const isWater = waterMap && waterMap[idx];
 
       if (state.options.hillshading) {
         const west = (x > 0 && hasData[idx - 1]) ? heights[idx - 1] : heights[idx];
@@ -352,7 +416,26 @@ function rebuildCanvas(map) {
         const north = (z > 0 && hasData[idx - width]) ? heights[idx - width] : heights[idx];
         const south = (z < height - 1 && hasData[idx + width]) ? heights[idx + width] : heights[idx];
 
-        const factor = hillshadeFactor((east - west) * 0.5, (south - north) * 0.5);
+        let factor = 1.0;
+
+        if (isWater) {
+          // Apply Water Relief (waves)
+          const dWest = (x > 0 && waterMap[idx - 1]) ? waterDepthMap[idx - 1] : waterDepthMap[idx];
+          const dEast = (x < width - 1 && waterMap[idx + 1]) ? waterDepthMap[idx + 1] : waterDepthMap[idx];
+          const dNorth = (z > 0 && waterMap[idx - width]) ? waterDepthMap[idx - width] : waterDepthMap[idx];
+          const dSouth = (z < height - 1 && waterMap[idx + width]) ? waterDepthMap[idx + width] : waterDepthMap[idx];
+
+          const dzdx = -(dEast - dWest) * 0.5 * 0.3; // 0.3 is WATER_RELIEF_NEIGHBOR_SCALE
+          const dzdy = -(dSouth - dNorth) * 0.5 * 0.3;
+          factor = hillshadeFactor(dzdx, dzdy, 0.6); // 0.6 is WATER_RELIEF_GAIN
+          factor = Math.max(0.85, Math.min(1.15, factor)); // WATER_RELIEF_CLAMP = 0.15
+        } else {
+          // Normal Hillshading
+          const dzdx = (east - west) * 0.5;
+          const dzdy = (south - north) * 0.5;
+          factor = hillshadeFactor(dzdx, dzdy, HILLSHADE_GAIN);
+        }
+
         if (factor !== 1) {
           pixels[p] = Math.max(0, Math.min(255, pixels[p] * factor));
           pixels[p + 1] = Math.max(0, Math.min(255, pixels[p + 1] * factor));
@@ -401,15 +484,12 @@ function screenToWorld(sx, sy) {
 function render() {
   if (!state.map) return;
 
-  // 1. Render Fullscreen Unexplored Style Pattern across entire canvas
   renderUnexploredBackground(ctx, canvas.width, canvas.height, state.options.unexploredStyle);
 
-  // 2. Render World Map over the background
   ctx.imageSmoothingEnabled = true;
   const v = state.view;
   ctx.drawImage(state.map.canvas, v.offsetX, v.offsetY, state.map.width * v.zoom, state.map.height * v.zoom);
 
-  // 3. Render Overlays
   if (state.options.chunkGrid) drawChunkGrid();
 
   for (const w of state.waypoints) {

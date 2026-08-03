@@ -27,7 +27,7 @@ import java.util.zip.GZIPOutputStream;
 public final class SolarisWebExporter {
 
     private static final int MAGIC = 0x534F4C4D;
-    private static final int VERSION = 1;
+    private static final int VERSION = 2; // Upgraded to V2 for water exports
     private static final DateTimeFormatter EXPORT_NAME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss");
 
     private SolarisWebExporter() {}
@@ -120,7 +120,9 @@ public final class SolarisWebExporter {
                 int[] waterTint = entry.waterTint();
                 int[] waterDepth = entry.waterDepth();
                 boolean[] waterOcean = entry.waterOcean();
+                boolean[] water = entry.water(); // Extract V2 water array
                 int[] heights = entry.heights();
+
                 for (int i = 0; i < pixels.length; i++) {
                     int abgr = pixels[i];
 
@@ -132,6 +134,10 @@ public final class SolarisWebExporter {
                     out.writeByte(abgr & 0xFF);
                     out.writeByte(abgr >> 8 & 0xFF);
                     out.writeByte(abgr >> 16 & 0xFF);
+
+                    // Export V2 extra flags
+                    out.writeByte(water[i] ? 1 : 0);
+                    out.writeByte(Math.max(0, Math.min(255, waterDepth[i])));
                 }
                 for (int height : heights) {
                     out.writeShort((short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, height)));
