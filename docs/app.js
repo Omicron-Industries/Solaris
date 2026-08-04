@@ -433,15 +433,33 @@ function renderUnexploredBackground(targetCtx, w, h, style) {
     return;
   }
 
-  if (style === "IMAGE" && state.options.unexploredImageCover) {
+  if (style === "IMAGE") {
     const img = state.options.unexploredImage;
     if (!img) {
       targetCtx.fillStyle = "#0a0b0d";
       targetCtx.fillRect(0, 0, w, h);
       return;
     }
-    targetCtx.drawImage(img, 0, 0, w, h);
-    return;
+
+    if (state.options.unexploredImageCover) {
+      // A static backdrop that fills the viewport — intentionally screen-locked, doesn't pan
+      // with the map (matches the in-game "cover" mode).
+      targetCtx.drawImage(img, 0, 0, w, h);
+      return;
+    }
+
+    // Tiled mode has to track world position like the terrain layer does, or it visibly smears/
+    // drifts relative to the map as soon as you pan. A CanvasPattern with a world-aligned
+    // transform does that natively (and stays fast during drag — no per-pixel JS loop).
+    if (state.map) {
+      const pattern = targetCtx.createPattern(img, "repeat");
+      const [originX, originY] = worldToScreen(0, 0);
+      const m = new DOMMatrix().translate(originX, originY).scale(state.view.zoom, state.view.zoom);
+      pattern.setTransform(m);
+      targetCtx.fillStyle = pattern;
+      targetCtx.fillRect(0, 0, w, h);
+      return;
+    }
   }
 
   const key = unexploredBgKey(w, h);
