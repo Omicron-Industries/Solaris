@@ -442,24 +442,16 @@ function renderUnexploredBackground(targetCtx, w, h, style) {
     }
 
     if (state.options.unexploredImageCover) {
-      // A static backdrop that fills the viewport — intentionally screen-locked, doesn't pan
-      // with the map (matches the in-game "cover" mode).
+      // A static backdrop that fills the viewport — screen-locked, doesn't pan with the map
+      // (matches the in-game "cover" mode).
+      targetCtx.imageSmoothingEnabled = false;
       targetCtx.drawImage(img, 0, 0, w, h);
       return;
     }
-
-    // Tiled mode has to track world position like the terrain layer does, or it visibly smears/
-    // drifts relative to the map as soon as you pan. A CanvasPattern with a world-aligned
-    // transform does that natively (and stays fast during drag — no per-pixel JS loop).
-    if (state.map) {
-      const pattern = targetCtx.createPattern(img, "repeat");
-      const [originX, originY] = worldToScreen(0, 0);
-      const m = new DOMMatrix().translate(originX, originY).scale(state.view.zoom, state.view.zoom);
-      pattern.setTransform(m);
-      targetCtx.fillStyle = pattern;
-      targetCtx.fillRect(0, 0, w, h);
-      return;
-    }
+    // Tiled mode falls through to the same screen-locked, pixel-exact generator every other
+    // unexplored style uses below (a cached ImageData, redrawn 1:1) — kept consistent with those
+    // rather than tracking world position, since a moving/scaling pattern under canvas smoothing
+    // is what caused the swimming/blurry look panning used to have.
   }
 
   const key = unexploredBgKey(w, h);
