@@ -273,6 +273,7 @@ public class SolarisMapScreen extends Screen {
                     SolarisConfig.HILLSHADING.save();
                     SolarisTexture.invalidateAll();
                     MapTileCache.clearAll();
+                    CaveTileCache.clearAll();
                 })));
         lastIconX = hillshadingX;
 
@@ -305,6 +306,7 @@ public class SolarisMapScreen extends Screen {
                     SolarisConfig.VIGNETTE.save();
                     SolarisTexture.invalidateAll();
                     MapTileCache.clearAll();
+                    CaveTileCache.clearAll();
                 })));
         lastIconX = vignetteX;
 
@@ -317,6 +319,7 @@ public class SolarisMapScreen extends Screen {
                     SolarisConfig.BLACK_AND_WHITE.save();
                     SolarisTexture.invalidateAll();
                     MapTileCache.clearAll();
+                    CaveTileCache.clearAll();
                 })));
         lastIconX = blackAndWhiteX;
 
@@ -327,6 +330,7 @@ public class SolarisMapScreen extends Screen {
                     SolarisConfig.UNEXPLORED_STYLE.set(SolarisConfig.UNEXPLORED_STYLE.get().next());
                     SolarisConfig.UNEXPLORED_STYLE.save();
                     MapTileCache.clearAll();
+                    CaveTileCache.clearAll();
                 })));
         lastIconX = unexploredX;
 

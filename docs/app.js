@@ -861,11 +861,21 @@ function hitTestWaypoint(sx, sy) {
   return null;
 }
 
-window.addEventListener("resize", () => {
+function handleResize() {
   if (!state.map) return;
   resizeCanvas();
   render();
-});
+}
+
+window.addEventListener("resize", handleResize);
+
+// window "resize" doesn't reliably fire for every layout change that resizes the canvas's parent
+// (browser/OS fullscreen toggles in particular can lag or skip it entirely depending on browser).
+// A ResizeObserver on the actual parent element catches those directly, so entering/exiting
+// fullscreen doesn't leave the canvas's backing buffer — and everything drawn into it — stuck at
+// the old size while the element itself has already resized around it.
+new ResizeObserver(handleResize).observe(document.getElementById("stage"));
+document.addEventListener("fullscreenchange", handleResize);
 
 // ── Meta bar ──────────────────────────────────────────────────────────────────
 

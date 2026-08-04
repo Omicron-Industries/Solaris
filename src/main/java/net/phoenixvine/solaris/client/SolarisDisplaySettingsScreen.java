@@ -8,6 +8,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.phoenixvine.solaris.client.render.CaveTileCache;
 import net.phoenixvine.solaris.client.render.MapTileCache;
 import net.phoenixvine.solaris.client.render.ModernPanel;
 import net.phoenixvine.solaris.client.render.SolarisTexture;
@@ -144,6 +145,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
             b.setMessage(deepOnlyLabel());
             SolarisTexture.invalidateAll();
             MapTileCache.clearAll();
+            CaveTileCache.clearAll();
         }).bounds(col1X, y, colW, 18).build());
         addRenderableWidget(new ContrastSlider(col2X, y, colW, 20));
         addRenderableWidget(new BrightnessSlider(col3X, y, colW, 20));
@@ -220,6 +222,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
             SolarisConfig.SHOW_CLAIMS_MAP.save();
             b.setMessage(claimsMapLabel());
             MapTileCache.clearAll();
+            CaveTileCache.clearAll();
             SolarisTexture.invalidateAll();
         }).bounds(col1X, y, colW, 18).build());
         addRenderableWidget(Button.builder(claimsMinimapLabel(), b -> {
@@ -434,6 +437,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
             SolarisConfig.SATURATION.set(value * 2.0);
             SolarisTexture.invalidateAll();
             MapTileCache.clearAll();
+            CaveTileCache.clearAll();
         }
     }
 
@@ -454,6 +458,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
             SolarisConfig.CONTRAST.set(value * 3.0);
             SolarisTexture.invalidateAll();
             MapTileCache.clearAll();
+            CaveTileCache.clearAll();
         }
     }
 
@@ -474,6 +479,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
             SolarisConfig.BRIGHTNESS.set(value * 2.0);
             SolarisTexture.invalidateAll();
             MapTileCache.clearAll();
+            CaveTileCache.clearAll();
         }
     }
 
@@ -494,6 +500,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
             SolarisConfig.FOLIAGE_BRIGHTNESS.set(value * 2.0);
             SolarisTexture.invalidateAll();
             MapTileCache.clearAll();
+            CaveTileCache.clearAll();
         }
     }
 
@@ -513,6 +520,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
         protected void applyValue() {
             SolarisConfig.UNEXPLORED_DENSITY.set(0.25 + value * 3.75);
             MapTileCache.clearAll();
+            CaveTileCache.clearAll();
         }
     }
 
@@ -532,6 +540,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
         protected void applyValue() {
             SolarisConfig.UNEXPLORED_BRIGHTNESS.set(0.25 + value * 2.25);
             MapTileCache.clearAll();
+            CaveTileCache.clearAll();
         }
     }
 
@@ -552,6 +561,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
             SolarisConfig.WATER_OPACITY.set(value);
             SolarisTexture.invalidateAll();
             MapTileCache.clearAll();
+            CaveTileCache.clearAll();
         }
     }
 
@@ -580,6 +590,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
             SolarisConfig.WATER_BLEND_RADIUS.set(radius());
             SolarisTexture.invalidateAll();
             MapTileCache.clearAll();
+            CaveTileCache.clearAll();
         }
     }
 
@@ -676,6 +687,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
             SolarisConfig.HILLSHADING_STRENGTH.set(value);
             SolarisTexture.invalidateAll();
             MapTileCache.clearAll();
+            CaveTileCache.clearAll();
         }
     }
 
@@ -696,6 +708,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
             SolarisConfig.VIGNETTE_STRENGTH.set(value);
             SolarisTexture.invalidateAll();
             MapTileCache.clearAll();
+            CaveTileCache.clearAll();
         }
     }
 }
