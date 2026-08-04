@@ -20,14 +20,6 @@ import org.lwjgl.glfw.GLFW;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_ACCENT;
 import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_BORDER;
 
-/**
- * Draws this mod's slot in the cross-mod "suite HUD bar" — a small row of icon buttons, one per
- * installed Phoenix-suite mod, lined up along the top-left of the screen during normal gameplay.
- * Every sibling mod implements this identically (same {@link #SUITE_ORDER}, same layout constants)
- * so that whichever subset of the suite happens to be installed still lines up with no gaps or
- * overlaps. There is intentionally no shared library between the mods — this class is fully
- * standalone.
- */
 @Mod.EventBusSubscriber(modid = PhoenixSolaris.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public final class SuiteHudBarButton {
 
@@ -42,9 +34,6 @@ public final class SuiteHudBarButton {
     private static final int GAP = 2;
     private static final int MARGIN = 4;
 
-    // Icons wrap into a compact grid (3 wide) instead of one long single-row strip, so the whole
-    // suite bar stays a tight square-ish cluster near the corner rather than sprawling across the
-    // top of the screen.
     private static final int GRID_COLUMNS = 3;
 
     private static final ResourceLocation ICON_TEXTURE = new ResourceLocation(PhoenixSolaris.MOD_ID,
@@ -83,11 +72,6 @@ public final class SuiteHudBarButton {
         return MARGIN + row * (BTN_SIZE + GAP);
     }
 
-    /**
-     * Total footprint of the whole suite bar (every loaded suite mod's slot, not just this one).
-     * Kept for parity with sibling suite mods that expose it for their own overlay/exclusion-area
-     * logic; unused within this mod.
-     */
     public static int barWidth() {
         int cols = Math.min(GRID_COLUMNS, Math.max(1, totalLoadedIconCount()));
         return MARGIN * 2 + cols * BTN_SIZE + (cols - 1) * GAP;
@@ -99,14 +83,6 @@ public final class SuiteHudBarButton {
         return MARGIN * 2 + rows * BTN_SIZE + (rows - 1) * GAP;
     }
 
-    /**
-     * The bar only ever renders on screens that opt in: any container screen that binds a slot to
-     * the local player's inventory (covers the vanilla inventory/creative screens without
-     * hardcoding them, plus crafting table, furnace, anvil, chest+player-inv, etc.), or any screen
-     * that explicitly asks for it via {@link SuiteHudBarAware}. It never draws during plain
-     * gameplay with no screen open, and never silently draws on top of some other mod's or
-     * vanilla's unrelated GUI.
-     */
     private static boolean screenWantsBar(Screen screen) {
         if (screen instanceof SuiteHudBarAware) return true;
         if (!(screen instanceof AbstractContainerScreen<?> containerScreen)) return false;
@@ -127,12 +103,6 @@ public final class SuiteHudBarButton {
         return mx >= x && mx <= x + BTN_SIZE && my >= y && my <= y + BTN_SIZE;
     }
 
-    /**
-     * Always drawn at the same absolute screen-space coordinates as the plain HUD overlay
-     * (top-left of the real viewport) regardless of which render path called it - a screen's own
-     * panel layout (e.g. the inventory's centered crafting grid) is never consulted, so the bar
-     * reads as "part of the permanent screen furniture", not "part of that panel".
-     */
     private static void draw(GuiGraphics g, Minecraft mc, double hoverMx, double hoverMy) {
         int x = buttonX();
         int y = buttonY();

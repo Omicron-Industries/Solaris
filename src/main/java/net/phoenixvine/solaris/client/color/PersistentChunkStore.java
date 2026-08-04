@@ -279,8 +279,7 @@ public final class PersistentChunkStore {
                     }
                 }
             }
-            // Swap the fully-written temp file in atomically so a crash or force-quit mid-write
-            // can never leave a truncated file in place of previously-good persisted data.
+
             Files.move(tempFile, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
                     java.nio.file.StandardCopyOption.ATOMIC_MOVE);
             PhoenixSolaris.LOGGER.info("[Solaris] Saved {} persisted chunk(s) for {} to disk ({} in memory)",

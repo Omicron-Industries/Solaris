@@ -2,6 +2,7 @@ package net.phoenixvine.solaris.client;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.ChunkPos;
@@ -26,6 +27,8 @@ import net.phoenixvine.solaris.client.waypoint.Waypoint;
 import net.phoenixvine.solaris.client.waypoint.WaypointManager;
 import net.phoenixvine.solaris.config.SolarisConfig;
 
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.*;
 import com.mojang.math.Axis;
 
 import java.util.List;
@@ -55,10 +58,6 @@ public class MinimapHudOverlay {
                 .atLeast(SolarisFeatureState.VISIBLE);
     }
 
-    /**
-     * Screen-space bounding box the minimap currently occupies — same square region every shape
-     * (circle/polygon) is inscribed within, used both for rendering and for scroll-to-zoom hit-testing.
-     */
     private static int[] bounds(Minecraft mc) {
         int screenSize = SolarisConfig.MINIMAP_SIZE.get();
         int screenW = mc.getWindow().getGuiScaledWidth();
@@ -67,12 +66,6 @@ public class MinimapHudOverlay {
 
     private static final double ZOOM_SCROLL_STEP = 0.5;
 
-    /**
-     * Scrolling while hovering the minimap AND holding the "cycle minimap style" keybind adjusts
-     * its zoom — held, not just tapped, so a bare scroll (e.g. switching hotbar slots near the
-     * corner) doesn't also change the minimap zoom. Cancelled while active so it doesn't also
-     * cycle the hotbar's selected slot underneath.
-     */
     @SubscribeEvent
     public static void onMouseScroll(InputEvent.MouseScrollingEvent event) {
         Minecraft mc = Minecraft.getInstance();
@@ -149,9 +142,24 @@ public class MinimapHudOverlay {
         float scale = screenSize / (float) viewPixels;
         float wrappedU = TextureAddressing.properMod(originX + u, tex.getSizePixels());
         float wrappedV = TextureAddressing.properMod(originZ + v, tex.getSizePixels());
+        
         if (shape == MinimapShape.SQUARE) {
-            g.blit(tex.textureId(), x, y, screenSize, screenSize, wrappedU, wrappedV, viewPixels, viewPixels,
-                    tex.getSizePixels(), tex.getSizePixels());
+            if (rotate) {
+                float overscan = 1.5f;
+                int renderSize = Math.round(screenSize * overscan);
+                int renderViewPixels = Math.round(viewPixels * overscan);
+                int renderX = x - (renderSize - screenSize) / 2;
+                int renderY = y - (renderSize - screenSize) / 2;
+                float renderU = (float) (playerPixelX - renderViewPixels / 2.0);
+                float renderV = (float) (playerPixelZ - renderViewPixels / 2.0);
+                float wrappedRenderU = TextureAddressing.properMod(originX + renderU, tex.getSizePixels());
+                float wrappedRenderV = TextureAddressing.properMod(originZ + renderV, tex.getSizePixels());
+                g.blit(tex.textureId(), renderX, renderY, renderSize, renderSize, wrappedRenderU, wrappedRenderV,
+                        renderViewPixels, renderViewPixels, tex.getSizePixels(), tex.getSizePixels());
+            } else {
+                g.blit(tex.textureId(), x, y, screenSize, screenSize, wrappedU, wrappedV, viewPixels, viewPixels,
+                        tex.getSizePixels(), tex.getSizePixels());
+            }
         } else {
             drawClippedTerrain(g, shape, tex, x, y, screenSize, wrappedU, wrappedV, scale);
         }
@@ -212,27 +220,43 @@ public class MinimapHudOverlay {
 
     private static void drawClippedTerrain(GuiGraphics g, MinimapShape shape, SolarisTexture tex, int x, int y,
                                            int screenSize, float u, float v, float scale) {
-        int stripH = Math.max(1, screenSize / 64);
+        
+        RenderSystem.setShaderTexture(0, tex.textureId());
+        RenderSystem.setShader(GameRenderer::getPositionTexShader);
+        BufferBuilder buffer = Tesselator.getInstance().getBuilder();
+        buffer.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
 
-        for (int i = 0; i < screenSize; i += stripH) {
-            int destH = Math.min(stripH, screenSize - i);
-            int rowCenter = i + destH / 2;
+        float texW = tex.getSizePixels();
+        float texH = tex.getSizePixels();
 
-            float[] span = shape.rowSpan(rowCenter / (float) screenSize);
+        for (int i = 0; i < screenSize; i++) {
+            float ny = (i + 0.5f) / screenSize;
+            float[] span = shape.rowSpan(ny);
             if (span == null) continue;
-            int destX = x + Math.round(span[0] * screenSize);
-            int destW = Math.round((span[1] - span[0]) * screenSize);
+
+            float destX = x + (span[0] * screenSize);
+            float destW = (span[1] - span[0]) * screenSize;
             if (destW <= 0) continue;
 
-            int destY = y + i;
+            float destY = y + i;
+
             float srcX = u + (destX - x) / scale;
             float srcY = v + i / scale;
-            int srcW = Math.max(1, Math.round(destW / scale));
-            int srcH = Math.max(1, Math.round(destH / scale));
+            float srcW = destW / scale;
+            float srcH = 1.0f / scale;
 
-            g.blit(tex.textureId(), destX, destY, destW, destH, srcX, srcY, srcW, srcH,
-                    tex.getSizePixels(), tex.getSizePixels());
+            float u0 = srcX / texW;
+            float v0 = srcY / texH;
+            float u1 = (srcX + srcW) / texW;
+            float v1 = (srcY + srcH) / texH;
+
+            buffer.vertex(destX, destY + 1, 0).uv(u0, v1).endVertex();
+            buffer.vertex(destX + destW, destY + 1, 0).uv(u1, v1).endVertex();
+            buffer.vertex(destX + destW, destY, 0).uv(u1, v0).endVertex();
+            buffer.vertex(destX, destY, 0).uv(u0, v0).endVertex();
         }
+
+        BufferUploader.drawWithShader(buffer.end());
     }
 
     private static boolean containsPoint(MinimapShape shape, int lx, int ly, int screenSize) {

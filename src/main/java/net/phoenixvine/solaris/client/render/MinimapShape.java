@@ -70,12 +70,32 @@ public enum MinimapShape {
 
     public boolean containsPoint(float nx, float ny) {
         if (this == SQUARE) return true;
+        if (this == CIRCLE) {
+            float dx = nx - 0.5f;
+            float dy = ny - 0.5f;
+            return (dx * dx + dy * dy) <= (0.5f * 0.5f);
+        }
         float[] span = rowSpan(ny);
         return span != null && nx >= span[0] && nx <= span[1];
     }
 
     public boolean containsPoint(int lx, int ly, int size) {
-        return containsPoint(lx / (float) size, ly / (float) size);
+        if (this == SQUARE) return true;
+
+        float nx = (lx + 0.5f) / size;
+        float ny = (ly + 0.5f) / size;
+
+        if (this == CIRCLE) {
+            float dx = nx - 0.5f;
+            float dy = ny - 0.5f;
+            return (dx * dx + dy * dy) <= (0.5f * 0.5f);
+        }
+
+        float[] span = rowSpan(ny);
+        if (span == null) return false;
+
+        float inset = 0.5f / size;
+        return nx >= (span[0] + inset) && nx <= (span[1] - inset);
     }
 
     private static float[][] hexagonVertices() {

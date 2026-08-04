@@ -30,6 +30,8 @@ public final class SolarisConfig {
     public static final ForgeConfigSpec.EnumValue<net.phoenixvine.solaris.client.render.UnexploredStyle> UNEXPLORED_STYLE;
     public static final ForgeConfigSpec.DoubleValue UNEXPLORED_DENSITY;
     public static final ForgeConfigSpec.DoubleValue UNEXPLORED_BRIGHTNESS;
+    public static final ForgeConfigSpec.ConfigValue<String> UNEXPLORED_IMAGE_PATH;
+    public static final ForgeConfigSpec.BooleanValue UNEXPLORED_IMAGE_COVER;
     public static final ForgeConfigSpec.BooleanValue SHOW_BLOCK_TOOLTIP;
     public static final ForgeConfigSpec.DoubleValue WATER_OPACITY;
     public static final ForgeConfigSpec.BooleanValue WATER_DEEP_ONLY;
@@ -190,12 +192,14 @@ public final class SolarisConfig {
                         "the Saturation slider (that just partially desaturates; this forces it all the way).")
                 .define("blackAndWhite", false);
         UNEXPLORED_STYLE = builder
-                .comment("How never-explored chunks render on the fullscreen map. FOG = flat theme fog color " +
-                        "(default). STARFIELD = a deterministic per-position star pattern colored from the " +
-                        "active theme's accent/dim/faint colors. PHOENIX = a deterministic ember pattern in " +
-                        "fixed warm fire colors. CLOUD = soft semi-transparent fog-of-war cloud blobs with real " +
-                        "gaps between them. All three patterns are stable across rebuilds and get pushed back " +
-                        "by real terrain as you explore. Purely cosmetic.")
+                .comment("How never-explored chunks render on the fullscreen map (and the underground cave " +
+                        "view). FOG = flat theme fog color (default). STARFIELD = a deterministic per-position " +
+                        "star pattern colored from the active theme's accent/dim/faint colors. PHOENIX = a " +
+                        "deterministic ember pattern in fixed warm fire colors. CLOUD = soft semi-transparent " +
+                        "fog-of-war cloud blobs with real gaps between them. IMAGE = tile unexploredImagePath " +
+                        "seamlessly instead (falls back to FOG if that's unset or fails to load). All patterns " +
+                        "are stable across rebuilds and get pushed back by real terrain as you explore. Purely " +
+                        "cosmetic.")
                 .defineEnum("unexploredStyle", net.phoenixvine.solaris.client.render.UnexploredStyle.FOG);
         UNEXPLORED_DENSITY = builder
                 .comment("Multiplier on how many stars/embers appear for the starfield/phoenix unexploredStyle. " +
@@ -205,6 +209,19 @@ public final class SolarisConfig {
                 .comment("Multiplier on star/ember brightness for the starfield/phoenix unexploredStyle. " +
                         "1.0 = default. No effect when unexploredStyle is FOG.")
                 .defineInRange("unexploredBrightness", 1.0, 0.25, 2.5);
+        UNEXPLORED_IMAGE_PATH = builder
+                .comment("Image file to tile across unexplored areas when unexploredStyle is IMAGE, as a path " +
+                        "relative to config/solaris/ (e.g. \"unexplored.png\"). Tiles seamlessly by wrapping " +
+                        "world coordinates against the image's own pixel size — a seamless/tileable source " +
+                        "image looks best. Empty or unreadable falls back to FOG.")
+                .define("unexploredImagePath", "");
+        UNEXPLORED_IMAGE_COVER = builder
+                .comment("How unexploredImagePath is applied. false (default) = tiled seamlessly across " +
+                        "unexplored areas at world scale, like the other unexploredStyles. true = the image is " +
+                        "instead stretched once to cover the whole visible map as a static backdrop (unexplored " +
+                        "areas become transparent so it shows through). No effect unless unexploredStyle is " +
+                        "IMAGE.")
+                .define("unexploredImageCover", false);
         SHOW_BLOCK_TOOLTIP = builder
                 .comment("Show the block you're hovering over on the fullscreen map as a tooltip. " +
                         "Reveals block info you may not have discovered in-world yet, so it's off by default.")
@@ -387,7 +404,22 @@ public final class SolarisConfig {
 
     private SolarisConfig() {}
 
+    private static final String CONFIG_FILE_NAME = "solaris/solaris-client.toml";
+
     public static void register() {
-        ModLoadingContext.get().registerConfig(ModConfig.Type.CLIENT, SPEC);
+        migrateLegacyConfigFile();
+        ModLoadingContext.get().registerConfig(ModConfig.Type.CLIENT, SPEC, CONFIG_FILE_NAME);
+    }
+
+    private static void migrateLegacyConfigFile() {
+        java.nio.file.Path legacy = java.nio.file.Paths.get("config", "solaris-client.toml");
+        java.nio.file.Path target = java.nio.file.Paths.get("config", CONFIG_FILE_NAME);
+        if (java.nio.file.Files.exists(target) || !java.nio.file.Files.exists(legacy)) return;
+        try {
+            java.nio.file.Files.createDirectories(target.getParent());
+            java.nio.file.Files.copy(legacy, target);
+        } catch (java.io.IOException ignored) {
+
+        }
     }
 }

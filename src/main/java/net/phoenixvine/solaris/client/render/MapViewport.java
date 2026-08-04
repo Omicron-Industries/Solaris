@@ -59,10 +59,10 @@ public class MapViewport {
         this.offsetY = y;
     }
 
-    public void raiseZoomMin(float newZoomMin) {
-        if (newZoomMin > zoomMin) zoomMin = newZoomMin;
-        if (zoom < zoomMin) zoom = zoomMin;
-        if (zoomMin > zoomMax) zoomMax = zoomMin * 2f;
+    public void setZoomBounds(float newZoomMin, float newZoomMax) {
+        this.zoomMin = newZoomMin;
+        this.zoomMax = Math.max(newZoomMax, newZoomMin);
+        this.zoom = Math.max(zoomMin, Math.min(zoomMax, zoom));
     }
 
     public void clampOffsetToCover(double contentSize, int frameX, int frameW, int frameY, int frameH) {

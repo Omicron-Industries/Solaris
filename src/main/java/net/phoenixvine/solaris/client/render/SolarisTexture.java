@@ -129,11 +129,6 @@ public class SolarisTexture implements AutoCloseable {
         return textureId;
     }
 
-    /**
-     * Whether claim-boundary overlays (e.g. Phoenix Domains) should be drawn for this particular
-     * texture instance — "minimap" and "map" are gated by independent settings, since they're
-     * genuinely separate rendering paths (the corner minimap vs. the fullscreen map).
-     */
     private boolean claimsOverlaysEnabled() {
         return "minimap".equals(name) ? SolarisConfig.SHOW_CLAIMS_MINIMAP.get() : SolarisConfig.SHOW_CLAIMS_MAP.get();
     }
@@ -197,8 +192,10 @@ public class SolarisTexture implements AutoCloseable {
                 .atLeast(SolarisFeatureState.VISIBLE)) {
             return false;
         }
+
         if (level.dimensionType().hasCeiling()) return true;
-        return player != null && CaveColorSampler.isUnderground(level, player.blockPosition());
+
+        return false;
     }
 
     private static final double NIGHT_FACTOR_BUCKET = 0.05;
@@ -460,7 +457,7 @@ public class SolarisTexture implements AutoCloseable {
 
         SolarisProfiler.time("waterBlur:" + name, this::blurWater);
         SolarisProfiler.time("waterRelief:" + name, this::applyWaterRelief);
-        if (SolarisConfig.HILLSHADING.get()) {
+        if (SolarisConfig.HILLSHADING.get() && !underground) {
             SolarisProfiler.time("hillshading:" + name, this::applyHillshading);
         }
 

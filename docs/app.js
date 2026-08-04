@@ -13,7 +13,24 @@ const state = {
   view: { offsetX: 0, offsetY: 0, zoom: 1, minZoom: 0.05, maxZoom: 32 },
   dragging: false,
   lastPointer: null,
-  options: { hillshading: true, chunkGrid: false, unexploredStyle: "FOG" },
+  options: {
+    hillshading: true,
+    chunkGrid: false,
+    unexploredStyle: "FOG",
+    unexploredDensity: 1,
+    unexploredBrightness: 1,
+    unexploredImage: null, // an HTMLImageElement once loaded
+    unexploredImageCover: false,
+    saturation: 1,
+    contrast: 1,
+    brightness: 1,
+    tintR: 1,
+    tintG: 1,
+    tintB: 1,
+    blackAndWhite: false,
+    vignette: false,
+    vignetteStrength: 0.5,
+  },
 };
 
 const canvas = document.getElementById("map-canvas");
@@ -22,30 +39,108 @@ const emptyState = document.getElementById("empty-state");
 const tooltip = document.getElementById("tooltip");
 const coordsEl = document.getElementById("coords");
 const metaEl = document.getElementById("meta");
-const optionsEl = document.getElementById("options");
 const scalebarEl = document.getElementById("scalebar");
 const scalebarLineEl = document.getElementById("scalebar-line");
 const scalebarLabelEl = document.getElementById("scalebar-label");
+const settingsToggleEl = document.getElementById("settings-toggle");
+const settingsPanelEl = document.getElementById("settings-panel");
+
+// ── Settings panel open/close ────────────────────────────────────────────────
+
+settingsToggleEl.addEventListener("click", () => settingsPanelEl.classList.toggle("hidden"));
+document.getElementById("settings-close").addEventListener("click", () =>
+    settingsPanelEl.classList.add("hidden"));
+
+// ── Settings: options that require a full rebuild (they bake into the offscreen image) ──
 
 document.getElementById("opt-hillshade").addEventListener("change", (e) => {
   state.options.hillshading = e.target.checked;
-  if (state.map) {
-    rebuildCanvas(state.map);
-    render();
-  }
+  rebuildAndRender();
 });
+
+function wireRebuildSlider(id, valId, key, decimals = 2) {
+  const input = document.getElementById(id);
+  const val = document.getElementById(valId);
+  input.addEventListener("input", (e) => {
+    state.options[key] = parseFloat(e.target.value);
+    if (val) val.textContent = state.options[key].toFixed(decimals);
+    rebuildAndRender();
+  });
+}
+
+wireRebuildSlider("opt-saturation", "val-saturation", "saturation");
+wireRebuildSlider("opt-contrast", "val-contrast", "contrast");
+wireRebuildSlider("opt-brightness", "val-brightness", "brightness");
+wireRebuildSlider("opt-tint-r", "val-tint-r", "tintR");
+wireRebuildSlider("opt-tint-g", "val-tint-g", "tintG");
+wireRebuildSlider("opt-tint-b", "val-tint-b", "tintB");
+
+document.getElementById("opt-bw").addEventListener("change", (e) => {
+  state.options.blackAndWhite = e.target.checked;
+  rebuildAndRender();
+});
+
+// ── Settings: options that only affect drawing, no rebuild needed ───────────
 
 document.getElementById("opt-grid").addEventListener("change", (e) => {
   state.options.chunkGrid = e.target.checked;
   render();
 });
 
-const optStyleEl = document.getElementById("opt-style");
-if (optStyleEl) {
-  optStyleEl.addEventListener("change", (e) => {
-    state.options.unexploredStyle = e.target.value;
+document.getElementById("opt-vignette").addEventListener("change", (e) => {
+  state.options.vignette = e.target.checked;
+  render();
+});
+
+wireDrawSlider("opt-vignette-strength", "val-vignette", "vignetteStrength");
+wireDrawSlider("opt-unexplored-density", "val-unexplored-density", "unexploredDensity");
+wireDrawSlider("opt-unexplored-brightness", "val-unexplored-brightness", "unexploredBrightness");
+
+function wireDrawSlider(id, valId, key, decimals = 2) {
+  const input = document.getElementById(id);
+  const val = document.getElementById(valId);
+  input.addEventListener("input", (e) => {
+    state.options[key] = parseFloat(e.target.value);
+    if (val) val.textContent = state.options[key].toFixed(decimals);
+    invalidateUnexploredBg();
     render();
   });
+}
+
+const optImageRowEl = document.getElementById("opt-image-row");
+const optImageCoverRowEl = document.getElementById("opt-image-cover-row");
+
+const optStyleEl = document.getElementById("opt-style");
+optStyleEl.addEventListener("change", (e) => {
+  state.options.unexploredStyle = e.target.value;
+  const isImage = e.target.value === "IMAGE";
+  optImageRowEl.classList.toggle("hidden", !isImage);
+  optImageCoverRowEl.classList.toggle("hidden", !isImage);
+  invalidateUnexploredBg();
+  render();
+});
+
+document.getElementById("opt-unexplored-image").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const img = new Image();
+  img.onload = () => {
+    state.options.unexploredImage = img;
+    invalidateUnexploredBg();
+    render();
+  };
+  img.src = URL.createObjectURL(file);
+});
+
+document.getElementById("opt-unexplored-cover").addEventListener("change", (e) => {
+  state.options.unexploredImageCover = e.target.checked;
+  invalidateUnexploredBg();
+  render();
+});
+
+function rebuildAndRender() {
+  if (state.map) rebuildCanvas(state.map);
+  render();
 }
 
 // ── File loading ─────────────────────────────────────────────────────────────
@@ -79,7 +174,7 @@ async function loadMapFile(file) {
     updateMeta();
     emptyState.classList.add("hidden");
     canvas.classList.remove("hidden");
-    optionsEl.classList.remove("hidden");
+    settingsToggleEl.classList.remove("hidden");
     scalebarEl.classList.remove("hidden");
     render();
   } catch (err) {
@@ -221,20 +316,51 @@ function scaleBrightness(rgba, factor) {
   ];
 }
 
+let imageSampleData = null;
+let imageSampleW = 0;
+let imageSampleH = 0;
+let imageSampleSrc = null;
+
+function sampleUnexploredImage(x, z) {
+  const img = state.options.unexploredImage;
+  if (!img) return null;
+  if (imageSampleSrc !== img.src) {
+    const off = document.createElement("canvas");
+    off.width = img.naturalWidth;
+    off.height = img.naturalHeight;
+    const offCtx = off.getContext("2d", { willReadFrequently: true });
+    offCtx.drawImage(img, 0, 0);
+    imageSampleData = offCtx.getImageData(0, 0, off.width, off.height).data;
+    imageSampleW = off.width;
+    imageSampleH = off.height;
+    imageSampleSrc = img.src;
+  }
+  if (!imageSampleW || !imageSampleH) return null;
+  const px = ((x % imageSampleW) + imageSampleW) % imageSampleW;
+  const pz = ((z % imageSampleH) + imageSampleH) % imageSampleH;
+  const idx = (pz * imageSampleW + px) * 4;
+  return [imageSampleData[idx], imageSampleData[idx + 1], imageSampleData[idx + 2], imageSampleData[idx + 3]];
+}
+
 function getUnexploredPixel(x, z, style) {
   const FOG = [10, 11, 13, 255];
   if (style === "FOG") return FOG;
 
+  const density = state.options.unexploredDensity;
+  const brightness = state.options.unexploredBrightness;
+
   if (style === "STARFIELD") {
     const h = mix64(x, z);
     const bucket = Number(h & 0x3FFn);
-    if (bucket < 3) {
+    const brightThreshold = Math.round(3 * density);
+    const dimThreshold = Math.round(12 * density);
+    if (bucket < brightThreshold) {
       const variance = 0.85 + Number((h >> 40n) & 0x2Dn) / 180.0;
-      return scaleBrightness([90, 169, 255, 255], variance);
+      return scaleBrightness([90, 169, 255, 255], brightness * variance);
     }
-    if (bucket < 12) {
+    if (bucket < dimThreshold) {
       const variance = 0.45 + Number((h >> 40n) & 0x4Fn) / 160.0;
-      return scaleBrightness([45, 90, 140, 255], variance);
+      return scaleBrightness([45, 90, 140, 255], brightness * variance);
     }
     return scaleBrightness(FOG, 0.3);
   }
@@ -242,15 +368,17 @@ function getUnexploredPixel(x, z, style) {
   if (style === "PHOENIX") {
     const h = mix64(x, z);
     const bucket = Number(h & 0x3FFn);
-    if (bucket < 3) {
+    const brightThreshold = Math.round(3 * density);
+    const dimThreshold = Math.round(14 * density);
+    if (bucket < brightThreshold) {
       const g = 130 + Number((h >> 40n) & 0x3Fn);
       const b = 20 + Number((h >> 48n) & 0x1Fn);
-      return [255, g, b, 255];
+      return scaleBrightness([255, g, b, 255], brightness);
     }
-    if (bucket < 14) {
+    if (bucket < dimThreshold) {
       const r = 140 + Number((h >> 40n) & 0x3Fn);
       const g = 40 + Number((h >> 48n) & 0x2Fn);
-      return scaleBrightness([r, g, 8, 255], 0.8);
+      return scaleBrightness([r, g, 8, 255], brightness * 0.8);
     }
     return [18, 4, 3, 255];
   }
@@ -266,23 +394,37 @@ function getUnexploredPixel(x, z, style) {
     const fine = blobNoise(x, z, 6, 0x9E3779B9n);
     const combined = coarse * 0.7 + fine * 0.3;
 
-    const coverage = 0.35;
+    const coverage = Math.max(0.05, Math.min(0.9, 0.35 * density));
     const t = Math.max(0, Math.min(1, (combined - (1.0 - coverage)) / coverage));
 
     if (t <= 0) return FOG;
 
-    const alpha = Math.round(Math.min(235, 60 + t * 150));
+    const alpha = Math.round(Math.min(235, 60 + t * 150 * brightness));
     const gray = Math.round(Math.min(240, 190 + t * 40));
     return [gray, gray, gray, alpha];
+  }
+
+  if (style === "IMAGE") {
+    const sampled = sampleUnexploredImage(x, z);
+    return sampled || FOG;
   }
   return FOG;
 }
 
 let bgCanvas = null;
 let bgCtx = null;
-let lastBgWidth = 0;
-let lastBgHeight = 0;
-let lastBgStyle = "";
+let lastBgKey = "";
+
+function unexploredBgKey(w, h) {
+  const o = state.options;
+  const imgSrc = o.unexploredImage ? o.unexploredImage.src : "";
+  return [w, h, o.unexploredStyle, o.unexploredDensity, o.unexploredBrightness, o.unexploredImageCover,
+    imgSrc].join("|");
+}
+
+function invalidateUnexploredBg() {
+  lastBgKey = "";
+}
 
 function renderUnexploredBackground(targetCtx, w, h, style) {
   if (style === "FOG") {
@@ -291,7 +433,19 @@ function renderUnexploredBackground(targetCtx, w, h, style) {
     return;
   }
 
-  if (!bgCanvas || lastBgWidth !== w || lastBgHeight !== h || lastBgStyle !== style) {
+  if (style === "IMAGE" && state.options.unexploredImageCover) {
+    const img = state.options.unexploredImage;
+    if (!img) {
+      targetCtx.fillStyle = "#0a0b0d";
+      targetCtx.fillRect(0, 0, w, h);
+      return;
+    }
+    targetCtx.drawImage(img, 0, 0, w, h);
+    return;
+  }
+
+  const key = unexploredBgKey(w, h);
+  if (!bgCanvas || lastBgKey !== key) {
     bgCanvas = document.createElement("canvas");
     bgCanvas.width = w;
     bgCanvas.height = h;
@@ -311,9 +465,7 @@ function renderUnexploredBackground(targetCtx, w, h, style) {
       }
     }
     bgCtx.putImageData(imgData, 0, 0);
-    lastBgWidth = w;
-    lastBgHeight = h;
-    lastBgStyle = style;
+    lastBgKey = key;
   }
   targetCtx.drawImage(bgCanvas, 0, 0);
 }
@@ -444,6 +596,54 @@ function rebuildCanvas(map) {
       }
     }
   }
+
+  // 3. Color grading pass (saturation, contrast, brightness, tint, black & white) — mirrors the
+  // in-game post-processing chain applied to the same explored-terrain pixels.
+  const o = state.options;
+  const hasGrading = o.saturation !== 1 || o.contrast !== 1 || o.brightness !== 1 || o.tintR !== 1 ||
+      o.tintG !== 1 || o.tintB !== 1 || o.blackAndWhite;
+  if (hasGrading) {
+    for (let idx = 0; idx < hasData.length; idx++) {
+      if (!hasData[idx]) continue;
+      const p = idx * 4;
+      let r = pixels[p], g = pixels[p + 1], b = pixels[p + 2];
+
+      if (o.saturation !== 1) {
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        r = lum + (r - lum) * o.saturation;
+        g = lum + (g - lum) * o.saturation;
+        b = lum + (b - lum) * o.saturation;
+      }
+      if (o.contrast !== 1) {
+        r = (r - 128) * o.contrast + 128;
+        g = (g - 128) * o.contrast + 128;
+        b = (b - 128) * o.contrast + 128;
+      }
+      if (o.brightness !== 1) {
+        r *= o.brightness;
+        g *= o.brightness;
+        b *= o.brightness;
+      }
+      if (o.tintR !== 1 || o.tintG !== 1 || o.tintB !== 1) {
+        r *= o.tintR;
+        g *= o.tintG;
+        b *= o.tintB;
+      }
+      r = Math.max(0, Math.min(255, r));
+      g = Math.max(0, Math.min(255, g));
+      b = Math.max(0, Math.min(255, b));
+
+      if (o.blackAndWhite) {
+        const gray = Math.max(0, Math.min(255, Math.round(0.299 * r + 0.587 * g + 0.114 * b)));
+        r = g = b = gray;
+      }
+
+      pixels[p] = r;
+      pixels[p + 1] = g;
+      pixels[p + 2] = b;
+    }
+  }
+
   offCtx.putImageData(shaded, 0, 0);
   map.canvas = off;
 }
@@ -504,7 +704,21 @@ function render() {
     ctx.stroke();
   }
 
+  if (state.options.vignette) drawVignette();
+
   updateScaleBar();
+}
+
+function drawVignette() {
+  const strength = state.options.vignetteStrength;
+  if (strength <= 0) return;
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const radius = Math.hypot(cx, cy);
+  const gradient = ctx.createRadialGradient(cx, cy, radius * 0.4, cx, cy, radius);
+  gradient.addColorStop(0, "rgba(0, 0, 0, 0)");
+  gradient.addColorStop(1, `rgba(0, 0, 0, ${Math.min(0.85, strength)})`);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
 function drawChunkGrid() {

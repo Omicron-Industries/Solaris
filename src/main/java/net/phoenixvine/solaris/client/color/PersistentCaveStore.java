@@ -23,11 +23,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
-/**
- * Persists explored cave-slice imagery per chunk per Y-bucket, mirroring {@link PersistentChunkStore}
- * so underground map mode can remember what you've already seen instead of showing flat fog for
- * anything outside the small live-reveal radius around the player.
- */
 public final class PersistentCaveStore {
 
     private static final int MAGIC = 0x534F4C42;

@@ -5,7 +5,8 @@ public enum UnexploredStyle {
     FOG,
     STARFIELD,
     PHOENIX,
-    CLOUD;
+    CLOUD,
+    IMAGE;
 
     public UnexploredStyle next() {
         UnexploredStyle[] values = values();
@@ -18,6 +19,7 @@ public enum UnexploredStyle {
             case STARFIELD -> "Starfield";
             case PHOENIX -> "Phoenix";
             case CLOUD -> "Cloud";
+            case IMAGE -> "Image";
         };
     }
 }

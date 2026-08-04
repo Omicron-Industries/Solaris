@@ -22,12 +22,14 @@ import net.phoenixvine.solaris.api.SolarisAPI;
 import net.phoenixvine.solaris.api.SolarisFeatureState;
 import net.phoenixvine.solaris.client.color.ChunkKey;
 import net.phoenixvine.solaris.client.color.ChunkRailCache;
+import net.phoenixvine.solaris.client.color.PersistentCaveStore;
 import net.phoenixvine.solaris.client.export.SolarisWebExporter;
 import net.phoenixvine.solaris.client.perf.SolarisProfiler;
 import net.phoenixvine.solaris.client.plan.PlanShape;
 import net.phoenixvine.solaris.client.plan.PlanShapeListScreen;
 import net.phoenixvine.solaris.client.plan.PlanShapeManager;
 import net.phoenixvine.solaris.client.plan.QuickPlanShapeScreen;
+import net.phoenixvine.solaris.client.render.CaveTileCache;
 import net.phoenixvine.solaris.client.render.LabelSide;
 import net.phoenixvine.solaris.client.render.LineRenderer;
 import net.phoenixvine.solaris.client.render.MapTileCache;
@@ -38,7 +40,7 @@ import net.phoenixvine.solaris.client.render.ModernPanel;
 import net.phoenixvine.solaris.client.render.PlayerArrow;
 import net.phoenixvine.solaris.client.render.SmoothShapes;
 import net.phoenixvine.solaris.client.render.SolarisTexture;
-import net.phoenixvine.solaris.client.render.TextureAddressing;
+import net.phoenixvine.solaris.client.render.UnexploredImageStyle;
 import net.phoenixvine.solaris.client.render.UnexploredStyle;
 import net.phoenixvine.solaris.client.render.globe.GlobeCamera;
 import net.phoenixvine.solaris.client.render.globe.SolarisGlobeRenderer;
@@ -67,7 +69,9 @@ import static net.phoenixvine.solaris.client.SolarisThemeUtils.C_TEXT;
 public class SolarisMapScreen extends Screen {
 
     private static final int MARGIN = 20;
-    private static final float MIN_ZOOM_OVERSCAN = 1.0f;
+
+    private static final int MAX_TILE_BUILDS_PER_FRAME = 12;
+
     private static final int BUTTON_R = 9;
     private static final int BUTTON_MARGIN = 14;
     private static final int BUTTON_GAP = 22;
@@ -90,6 +94,7 @@ public class SolarisMapScreen extends Screen {
             SolarisConfig.ZOOM_MIN.get().floatValue(), SolarisConfig.ZOOM_MAX.get().floatValue());
     private final List<IconButton> iconButtons = new ArrayList<>();
     private ViewMode mode = ViewMode.FLAT;
+    private boolean undergroundView = false;
     private GlobeCamera globeCamera;
     private final SphereMesh globeMesh = new SphereMesh();
     private boolean dragging = false;
@@ -145,12 +150,10 @@ public class SolarisMapScreen extends Screen {
         SolarisTexture tex = texture();
 
         int viewportSpan = Math.min(width, height) - 2 * MARGIN;
-        if (viewportSpan > 0) {
-            viewport.raiseZoomMin((float) viewportSpan * MIN_ZOOM_OVERSCAN / tex.getSizePixels());
-        }
-
         float frameFitScale = viewportSpan > 0 ? viewportSpan / 2f : 100f;
         globeCamera = new GlobeCamera(frameFitScale * 0.4f, frameFitScale * 5f);
+
+        syncZoomLimits();
 
         radiusPixels = tex.getRadiusChunks() * 16;
 
@@ -171,6 +174,23 @@ public class SolarisMapScreen extends Screen {
         buildIconButtons();
     }
 
+    private static final float UNLIMITED_ZOOM_MIN = 0.01f;
+    private static final float UNLIMITED_ZOOM_MAX = 1000f;
+
+    private void syncZoomLimits() {
+        Minecraft mc = Minecraft.getInstance();
+        ResourceLocation dimension = mc.level != null ? mc.level.dimension().location() : null;
+        boolean limitsEnabled = dimension == null ||
+                SolarisAPI.getFeatureState(SolarisAPI.FEATURE_ZOOM_LIMITS, dimension)
+                        .atLeast(SolarisFeatureState.VISIBLE);
+        if (limitsEnabled) {
+            viewport.setZoomBounds(SolarisConfig.ZOOM_MIN.get().floatValue(),
+                    SolarisConfig.ZOOM_MAX.get().floatValue());
+        } else {
+            viewport.setZoomBounds(UNLIMITED_ZOOM_MIN, UNLIMITED_ZOOM_MAX);
+        }
+    }
+
     private static final ItemStack WAYPOINTS_ICON = new ItemStack(Items.FILLED_MAP);
     private static final ItemStack THEME_ICON = new ItemStack(Items.PAINTING);
     private static final ItemStack SETTINGS_ICON = new ItemStack(Items.COMPARATOR);
@@ -180,6 +200,7 @@ public class SolarisMapScreen extends Screen {
     private static final ItemStack WEB_EXPORT_ICON = new ItemStack(Items.MAP);
     private static final ItemStack GOTO_ICON = new ItemStack(Items.COMPASS);
     private static final ItemStack MOBS_ICON = new ItemStack(Items.ZOMBIE_SPAWN_EGG);
+    private static final ItemStack UNDERGROUND_ICON = new ItemStack(Items.LADDER);
 
     private void buildIconButtons() {
         iconButtons.clear();
@@ -233,6 +254,15 @@ public class SolarisMapScreen extends Screen {
                     })));
             lastIconX = globeX;
         }
+
+        int undergroundX = lastIconX - BUTTON_GAP;
+        iconButtons.add(new IconButton(undergroundX, bottomY, "Underground View",
+                (g, hover) -> {
+                    if (undergroundView) SmoothShapes.drawRing(g, undergroundX, bottomY, BUTTON_R - 1, C_ACCENT);
+                    drawItemIcon(g, undergroundX, bottomY, UNDERGROUND_ICON);
+                },
+                () -> runIfEnabled(SolarisAPI.FEATURE_UNDERGROUND_MAP, () -> undergroundView = !undergroundView)));
+        lastIconX = undergroundX;
 
         int hillshadingX = lastIconX - BUTTON_GAP;
         iconButtons.add(new IconButton(hillshadingX, bottomY, "Hillshading",
@@ -424,45 +454,22 @@ public class SolarisMapScreen extends Screen {
                 g.fill(cx - r + 3, cy - r + 3, cx + 1, cy - 1, 0x60D0D0D8);
                 g.fill(cx - 1, cy + 1, cx + r - 2, cy + r - 2, 0x50D0D0D8);
             }
+            case IMAGE -> {
+                g.fill(cx - r, cy - r, cx + r, cy + r, 0xFF20242C);
+                g.fill(cx - r + 2, cy - r + 2, cx + r - 2, cy + r - 2, 0xFF3A4050);
+                g.fill(cx - r + 3, cy + 1, cx, cy + r - 2, 0xFF566078);
+                g.fill(cx - 1, cy - r + 3, cx + r - 3, cy + r - 4, 0xFF8894A8);
+            }
             default -> SmoothShapes.drawRing(g, cx, cy, r, C_TEXT);
         }
     }
 
     private boolean isUnderground() {
-        Minecraft mc = Minecraft.getInstance();
-        return mc.level != null && SolarisTexture.isCaveSliceMode(mc.level, mc.player);
+        return undergroundView;
     }
 
     private void clampViewport() {
-        recenterIfNeeded();
 
-        if (dragging) return;
-
-        if (mode == ViewMode.FLAT && isUnderground()) {
-            viewport.clampOffsetToCover(texture().getSizePixels(), MARGIN, width - 2 * MARGIN, MARGIN,
-                    height - 2 * MARGIN);
-        }
-    }
-
-    private void recenterIfNeeded() {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null || mode != ViewMode.FLAT || !isUnderground()) return;
-
-        double frameCenterX = MARGIN + (width - 2 * MARGIN) / 2.0;
-        double frameCenterY = MARGIN + (height - 2 * MARGIN) / 2.0;
-        int viewWorldX = (int) Math.floor(viewport.toWorldX(frameCenterX, 0));
-        int viewWorldZ = (int) Math.floor(viewport.toWorldZ(frameCenterY, 0));
-        int viewChunkX = viewWorldX >> 4;
-        int viewChunkZ = viewWorldZ >> 4;
-
-        if (viewChunkX == anchorChunkX && viewChunkZ == anchorChunkZ) return;
-
-        if (!dragRebuildGateOpen()) return;
-
-        anchorChunkX = viewChunkX;
-        anchorChunkZ = viewChunkZ;
-        centerKey = ChunkKey.of(mc.level, new ChunkPos(anchorChunkX, anchorChunkZ));
-        texture().maybeRebuild(centerKey);
     }
 
     private void recenterGlobeIfNeeded() {
@@ -507,18 +514,6 @@ public class SolarisMapScreen extends Screen {
         return radiusPixels + (worldZ - (anchorChunkZ << 4));
     }
 
-    private int wrappedOriginX(SolarisTexture tex) {
-        ChunkKey lastCenter = tex.getLastCenter();
-        int centerX = lastCenter != null ? lastCenter.x() : anchorChunkX;
-        return TextureAddressing.properMod(centerX - tex.getRadiusChunks(), tex.getRadiusChunks() * 2 + 1) * 16;
-    }
-
-    private int wrappedOriginZ(SolarisTexture tex) {
-        ChunkKey lastCenter = tex.getLastCenter();
-        int centerZ = lastCenter != null ? lastCenter.z() : anchorChunkZ;
-        return TextureAddressing.properMod(centerZ - tex.getRadiusChunks(), tex.getRadiusChunks() * 2 + 1) * 16;
-    }
-
     private static final long DRAG_REBUILD_THROTTLE_MS = 200L;
 
     private boolean dragRebuildGateOpen() {
@@ -529,10 +524,16 @@ public class SolarisMapScreen extends Screen {
         return true;
     }
 
-    private void maybeRebuildThrottled(SolarisTexture tex) {
-        if (centerKey == null) return;
-        if (!dragRebuildGateOpen()) return;
-        tex.maybeRebuild(centerKey);
+    private void drawUnexploredCoverImage(GuiGraphics g) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) return;
+        if (SolarisAPI.getUnexploredStyle(mc.level.dimension().location()) != UnexploredStyle.IMAGE) return;
+        if (!SolarisConfig.UNEXPLORED_IMAGE_COVER.get()) return;
+        if (!UnexploredImageStyle.isAvailable()) return;
+
+        g.blit(UnexploredImageStyle.textureId(), MARGIN, MARGIN, width - 2 * MARGIN, height - 2 * MARGIN, 0, 0,
+                UnexploredImageStyle.width(), UnexploredImageStyle.height(), UnexploredImageStyle.width(),
+                UnexploredImageStyle.height());
     }
 
     public void renderMapBackground(GuiGraphics g) {
@@ -541,17 +542,9 @@ public class SolarisMapScreen extends Screen {
         ModernPanel.draw(g, MARGIN - 4, MARGIN - 4, width - 2 * (MARGIN - 4), height - 2 * (MARGIN - 4), C_BORDER);
         g.enableScissor(MARGIN, MARGIN, width - MARGIN, height - MARGIN);
         g.fill(MARGIN, MARGIN, width - MARGIN, height - MARGIN, C_BG);
+        drawUnexploredCoverImage(g);
         if (isUnderground()) {
-            SolarisTexture tex = texture();
-            maybeRebuildThrottled(tex);
-            int size = tex.getSizePixels();
-            int windowWorldMinX = (anchorChunkX << 4) - radiusPixels;
-            int windowWorldMinZ = (anchorChunkZ << 4) - radiusPixels;
-            int destX = (int) viewport.toScreenX(windowWorldMinX, 0);
-            int destY = (int) viewport.toScreenY(windowWorldMinZ, 0);
-            int destSize = (int) (size * viewport.getZoom());
-            g.blit(tex.textureId(), destX, destY, destSize, destSize, wrappedOriginX(tex), wrappedOriginZ(tex), size,
-                    size, size, size);
+            renderCaveMapTiles(g);
         } else {
             renderFlatMapTiles(g);
         }
@@ -565,6 +558,7 @@ public class SolarisMapScreen extends Screen {
         ModernPanel.draw(g, MARGIN - 4, MARGIN - 4, width - 2 * (MARGIN - 4), height - 2 * (MARGIN - 4), C_BORDER);
         g.enableScissor(MARGIN, MARGIN, width - MARGIN, height - MARGIN);
         g.fill(MARGIN, MARGIN, width - MARGIN, height - MARGIN, C_BG);
+        drawUnexploredCoverImage(g);
 
         if (mode == ViewMode.FLAT) {
             renderFlatMap(g, mx, my);
@@ -622,29 +616,10 @@ public class SolarisMapScreen extends Screen {
         g.drawString(font, label, x, y + 7, C_TEXT, true);
     }
 
-    private void drawChunkGridWindowed(GuiGraphics g, int destX, int destY, int size) {
-        int frameLeft = MARGIN;
-        int frameRight = width - MARGIN;
-        int frameTop = MARGIN;
-        int frameBottom = height - MARGIN;
-        int gridColor = 0x30000000;
-        float zoom = viewport.getZoom();
-
-        for (int i = 0; i <= size; i += 16) {
-            int sx = destX + Math.round(i * zoom);
-            if (sx < frameLeft || sx > frameRight) continue;
-            g.fill(sx, Math.max(destY, frameTop), sx + 1, Math.min(destY + Math.round(size * zoom), frameBottom),
-                    gridColor);
-        }
-        for (int i = 0; i <= size; i += 16) {
-            int sy = destY + Math.round(i * zoom);
-            if (sy < frameTop || sy > frameBottom) continue;
-            g.fill(Math.max(destX, frameLeft), sy, Math.min(destX + Math.round(size * zoom), frameRight), sy + 1,
-                    gridColor);
-        }
-    }
-
     private void drawChunkGridWorld(GuiGraphics g) {
+        
+        if (viewport.getZoom() < 0.4f) return;
+
         int frameLeft = MARGIN;
         int frameRight = width - MARGIN;
         int frameTop = MARGIN;
@@ -694,42 +669,6 @@ public class SolarisMapScreen extends Screen {
         }
     }
 
-    private void drawClippedFlatTerrain(GuiGraphics g, SolarisTexture tex, MinimapShape shape, int destX, int destY,
-                                        int destSize, int originU, int originV, int texSize) {
-        int panelX = MARGIN;
-        int panelY = MARGIN;
-        int panelW = width - 2 * MARGIN;
-        int panelH = height - 2 * MARGIN;
-        float zoomFactor = destSize / (float) texSize;
-        int stripH = Math.max(1, panelH / 128);
-
-        for (int i = 0; i < panelH; i += stripH) {
-            int rowStripH = Math.min(stripH, panelH - i);
-            int rowCenter = i + rowStripH / 2;
-            float[] span = shape.rowSpan(rowCenter / (float) panelH);
-            if (span == null) continue;
-
-            int stripX0 = panelX + Math.round(span[0] * panelW);
-            int stripX1 = panelX + Math.round(span[1] * panelW);
-            int stripY0 = panelY + i;
-            int stripY1 = stripY0 + rowStripH;
-
-            int clipX0 = Math.max(stripX0, destX);
-            int clipX1 = Math.min(stripX1, destX + destSize);
-            int clipY0 = Math.max(stripY0, destY);
-            int clipY1 = Math.min(stripY1, destY + destSize);
-            if (clipX1 <= clipX0 || clipY1 <= clipY0) continue;
-
-            float srcX = originU + (clipX0 - destX) / zoomFactor;
-            float srcY = originV + (clipY0 - destY) / zoomFactor;
-            int srcW = Math.max(1, Math.round((clipX1 - clipX0) / zoomFactor));
-            int srcH = Math.max(1, Math.round((clipY1 - clipY0) / zoomFactor));
-
-            g.blit(tex.textureId(), clipX0, clipY0, clipX1 - clipX0, clipY1 - clipY0, srcX, srcY, srcW, srcH, texSize,
-                    texSize);
-        }
-    }
-
     private boolean insideMapShape(int screenX, int screenY) {
         MinimapShape shape = SolarisConfig.MAP_SHAPE.get();
         if (shape == MinimapShape.SQUARE) return true;
@@ -769,29 +708,15 @@ public class SolarisMapScreen extends Screen {
         int texScreenMaxY;
 
         if (underground) {
+            renderCaveMapTiles(g);
+            if (SolarisConfig.SHOW_CHUNK_GRID.get()) drawChunkGridWorld(g);
 
-            SolarisTexture tex = texture();
-            maybeRebuildThrottled(tex);
-            int size = tex.getSizePixels();
-            int windowWorldMinX = (anchorChunkX << 4) - radiusPixels;
-            int windowWorldMinZ = (anchorChunkZ << 4) - radiusPixels;
-            int destX = (int) viewport.toScreenX(windowWorldMinX, 0);
-            int destY = (int) viewport.toScreenY(windowWorldMinZ, 0);
-            int destSize = (int) (size * viewport.getZoom());
-            MinimapShape mapShape = SolarisConfig.MAP_SHAPE.get();
-            if (mapShape == MinimapShape.SQUARE) {
-                g.blit(tex.textureId(), destX, destY, destSize, destSize, wrappedOriginX(tex), wrappedOriginZ(tex),
-                        size, size, size, size);
-            } else {
-                drawClippedFlatTerrain(g, tex, mapShape, destX, destY, destSize, wrappedOriginX(tex),
-                        wrappedOriginZ(tex), size);
-            }
-            if (SolarisConfig.SHOW_CHUNK_GRID.get()) drawChunkGridWindowed(g, destX, destY, size);
+            if (SolarisConfig.VIGNETTE.get()) drawVignetteOverlay(g);
 
-            texScreenMinX = Math.max(MARGIN, destX);
-            texScreenMaxX = Math.min(width - MARGIN, destX + destSize);
-            texScreenMinY = Math.max(MARGIN, destY);
-            texScreenMaxY = Math.min(height - MARGIN, destY + destSize);
+            texScreenMinX = MARGIN;
+            texScreenMaxX = width - MARGIN;
+            texScreenMinY = MARGIN;
+            texScreenMaxY = height - MARGIN;
         } else {
             renderFlatMapTiles(g);
             if (SolarisConfig.SHOW_CHUNK_GRID.get()) drawChunkGridWorld(g);
@@ -804,7 +729,7 @@ public class SolarisMapScreen extends Screen {
             texScreenMaxY = height - MARGIN;
         }
 
-        if (SolarisConfig.SHOW_RAIL_NETWORK.get() && mc.level != null) {
+        if (SolarisConfig.SHOW_RAIL_NETWORK.get() && mc.level != null && viewport.getZoom() >= 0.15f) {
             ResourceLocation dimension = mc.level.dimension().location();
             SolarisProfiler.time("railNetworkRender", () -> drawRailNetwork(g, dimension));
         }
@@ -925,12 +850,71 @@ public class SolarisMapScreen extends Screen {
         drawShapePreview(g, mx, my);
     }
 
+    private void renderCaveMapTiles(GuiGraphics g) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) return;
+        ResourceLocation dimension = mc.level.dimension().location();
+        int yBucket = PersistentCaveStore.yBucket(mc.player != null ? Mth.floor(mc.player.getY()) : 0);
+
+        float zoom = viewport.getZoom();
+        if (zoom < 0.05f) return;
+
+        double worldMinX = viewport.toWorldX(MARGIN, 0);
+        double worldMaxX = viewport.toWorldX(width - MARGIN, 0);
+        double worldMinZ = viewport.toWorldZ(MARGIN, 0);
+        double worldMaxZ = viewport.toWorldZ(height - MARGIN, 0);
+
+        int tileMinX = Math.floorDiv((int) Math.floor(worldMinX) >> 4, CaveTileCache.TILE_CHUNKS);
+        int tileMaxX = Math.floorDiv((int) Math.floor(worldMaxX) >> 4, CaveTileCache.TILE_CHUNKS);
+        int tileMinZ = Math.floorDiv((int) Math.floor(worldMinZ) >> 4, CaveTileCache.TILE_CHUNKS);
+        int tileMaxZ = Math.floorDiv((int) Math.floor(worldMaxZ) >> 4, CaveTileCache.TILE_CHUNKS);
+
+        if (tileMaxX - tileMinX > 40) {
+            int midX = (tileMinX + tileMaxX) / 2;
+            tileMinX = midX - 20;
+            tileMaxX = midX + 20;
+        }
+        if (tileMaxZ - tileMinZ > 40) {
+            int midZ = (tileMinZ + tileMaxZ) / 2;
+            tileMinZ = midZ - 20;
+            tileMaxZ = midZ + 20;
+        }
+
+        int[] buildBudget = { MAX_TILE_BUILDS_PER_FRAME };
+        for (int tz = tileMinZ; tz <= tileMaxZ; tz++) {
+            for (int tx = tileMinX; tx <= tileMaxX; tx++) {
+                int tileWorldX = tx * CaveTileCache.TILE_CHUNKS * 16;
+                int tileWorldZ = tz * CaveTileCache.TILE_CHUNKS * 16;
+
+                int destX = (int) Math.round(viewport.toScreenX(tileWorldX, 0));
+                int destY = (int) Math.round(viewport.toScreenY(tileWorldZ, 0));
+                int destSizeX = (int) Math.round(viewport.toScreenX(tileWorldX + CaveTileCache.TILE_PIXELS, 0)) - destX;
+                int destSizeZ = (int) Math.round(viewport.toScreenY(tileWorldZ + CaveTileCache.TILE_PIXELS, 0)) - destY;
+
+                if (destX + destSizeX < MARGIN || destX > width - MARGIN ||
+                        destY + destSizeZ < MARGIN || destY > height - MARGIN) {
+                    continue;
+                }
+
+                CaveTileCache.TileKey key = new CaveTileCache.TileKey(dimension, tx, tz, yBucket);
+                CaveTileCache.CaveTile tile = CaveTileCache.getOrBuildTile(key, mc.level, mc.player, buildBudget);
+
+                if (tile == null) continue;
+
+                g.blit(tile.textureId(), destX, destY, destSizeX, destSizeZ, 0, 0, CaveTileCache.TILE_PIXELS,
+                        CaveTileCache.TILE_PIXELS, CaveTileCache.TILE_PIXELS, CaveTileCache.TILE_PIXELS);
+            }
+        }
+    }
+
     private void renderFlatMapTiles(GuiGraphics g) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return;
         ResourceLocation dimension = mc.level.dimension().location();
 
         float zoom = viewport.getZoom();
+        if (zoom < 0.05f) return;
+
         double worldMinX = viewport.toWorldX(MARGIN, 0);
         double worldMaxX = viewport.toWorldX(width - MARGIN, 0);
         double worldMinZ = viewport.toWorldZ(MARGIN, 0);
@@ -941,13 +925,20 @@ public class SolarisMapScreen extends Screen {
         int tileMinZ = Math.floorDiv((int) Math.floor(worldMinZ) >> 4, MapTileCache.TILE_CHUNKS);
         int tileMaxZ = Math.floorDiv((int) Math.floor(worldMaxZ) >> 4, MapTileCache.TILE_CHUNKS);
 
+        if (tileMaxX - tileMinX > 40) {
+            int midX = (tileMinX + tileMaxX) / 2;
+            tileMinX = midX - 20;
+            tileMaxX = midX + 20;
+        }
+        if (tileMaxZ - tileMinZ > 40) {
+            int midZ = (tileMinZ + tileMaxZ) / 2;
+            tileMinZ = midZ - 20;
+            tileMaxZ = midZ + 20;
+        }
+
+        int[] buildBudget = { MAX_TILE_BUILDS_PER_FRAME };
         for (int tz = tileMinZ; tz <= tileMaxZ; tz++) {
             for (int tx = tileMinX; tx <= tileMaxX; tx++) {
-                MapTileCache.TileKey key = new MapTileCache.TileKey(dimension, tx, tz);
-                MapTileCache.MapTile tile = MapTileCache.getOrBuildTile(key);
-
-                if (tile == null) continue;
-
                 int tileWorldX = tx * MapTileCache.TILE_CHUNKS * 16;
                 int tileWorldZ = tz * MapTileCache.TILE_CHUNKS * 16;
 
@@ -955,6 +946,17 @@ public class SolarisMapScreen extends Screen {
                 int destY = (int) Math.round(viewport.toScreenY(tileWorldZ, 0));
                 int destSizeX = (int) Math.round(viewport.toScreenX(tileWorldX + MapTileCache.TILE_PIXELS, 0)) - destX;
                 int destSizeZ = (int) Math.round(viewport.toScreenY(tileWorldZ + MapTileCache.TILE_PIXELS, 0)) - destY;
+
+                if (destX + destSizeX < MARGIN || destX > width - MARGIN ||
+                        destY + destSizeZ < MARGIN || destY > height - MARGIN) {
+                    continue;
+                }
+
+                MapTileCache.TileKey key = new MapTileCache.TileKey(dimension, tx, tz);
+                MapTileCache.MapTile tile = MapTileCache.getOrBuildTile(key, buildBudget);
+
+                if (tile == null) continue;
+
                 g.blit(tile.textureId(), destX, destY, destSizeX, destSizeZ, 0, 0, MapTileCache.TILE_PIXELS,
                         MapTileCache.TILE_PIXELS, MapTileCache.TILE_PIXELS, MapTileCache.TILE_PIXELS);
             }
@@ -1482,6 +1484,7 @@ public class SolarisMapScreen extends Screen {
             globeCamera.adjustZoom(delta);
             return true;
         }
+        syncZoomLimits();
         if (viewport.adjustZoomToAnchor(delta, mx, my, 0, 0)) {
             clampViewport();
             return true;

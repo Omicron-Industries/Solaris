@@ -46,4 +46,8 @@ public enum MinimapStyle {
         }
         return best;
     }
+
+    public static int snapToPixel(float value) {
+        return (int) Math.floor(value);
+    }
 }

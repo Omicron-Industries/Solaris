@@ -104,7 +104,7 @@ public final class MapTileCache {
         }
     }
 
-    public static MapTile getOrBuildTile(TileKey key) {
+    public static MapTile getOrBuildTile(TileKey key, int[] buildBudget) {
         MapTile tile = TILES.get(key);
         boolean dirty = DIRTY.remove(key);
         if (tile != null && !dirty) return tile;
@@ -113,6 +113,12 @@ public final class MapTileCache {
             if (dirty) DIRTY.add(key);
             return tile;
         }
+
+        if (buildBudget[0] <= 0) {
+            DIRTY.add(key);
+            return tile;
+        }
+        buildBudget[0]--;
 
         if (tile == null) {
             ResourceLocation id = new ResourceLocation(PhoenixSolaris.MOD_ID,
@@ -148,13 +154,13 @@ public final class MapTileCache {
         return (z + 1) * HALO + (x + 1);
     }
 
-    private static int themeToAbgr(int argb) {
+    static int themeToAbgr(int argb) {
         return FastColor.ABGR32.color(FastColor.ARGB32.alpha(argb), FastColor.ARGB32.blue(argb),
                 FastColor.ARGB32.green(argb), FastColor.ARGB32.red(argb));
     }
 
-    private static int starfieldPixel(int worldX, int worldZ, double density, double brightness,
-                                      int accentAbgr, int dimAbgr, int spaceAbgr) {
+    static int starfieldPixel(int worldX, int worldZ, double density, double brightness,
+                              int accentAbgr, int dimAbgr, int spaceAbgr) {
         long h = (long) worldX * 0x9E3779B97F4A7C15L + (long) worldZ * 0xBF58476D1CE4E5B9L;
         h ^= h >>> 31;
         h *= 0xFF51AFD7ED558CCDL;
@@ -176,7 +182,7 @@ public final class MapTileCache {
 
     private static final int EMBER_SPACE_COLOR = FastColor.ABGR32.color(255, 3, 4, 18);
 
-    private static int phoenixPixel(int worldX, int worldZ, double density, double brightness) {
+    static int phoenixPixel(int worldX, int worldZ, double density, double brightness) {
         long h = (long) worldX * 0x9E3779B97F4A7C15L + (long) worldZ * 0xBF58476D1CE4E5B9L;
         h ^= h >>> 31;
         h *= 0xFF51AFD7ED558CCDL;
@@ -210,7 +216,7 @@ public final class MapTileCache {
         return (h & 0xFFFFFF) / (double) 0xFFFFFF;
     }
 
-    private static int cloudPixel(int worldX, int worldZ, double density, double brightness) {
+    static int cloudPixel(int worldX, int worldZ, double density, double brightness) {
         double coarse = blobNoise(worldX, worldZ, 20, 0x1L);
         double fine = blobNoise(worldX, worldZ, 6, 0x9E3779B9L);
         double combined = coarse * 0.7 + fine * 0.3;
@@ -235,6 +241,7 @@ public final class MapTileCache {
         UnexploredStyle unexploredStyle = SolarisAPI.getUnexploredStyle(key.dimension());
         double unexploredDensity = SolarisConfig.UNEXPLORED_DENSITY.get();
         double unexploredBrightness = SolarisConfig.UNEXPLORED_BRIGHTNESS.get();
+        boolean unexploredImageCover = SolarisConfig.UNEXPLORED_IMAGE_COVER.get();
         int starAccent = themeToAbgr(SolarisThemeUtils.C_ACCENT);
         int starDim = themeToAbgr(SolarisThemeUtils.C_DIM);
         int starSpace = SolarisTexture.scaleBrightness(fogColor, 0.3);
@@ -326,6 +333,11 @@ public final class MapTileCache {
                                 case PHOENIX -> phoenixPixel(worldPx, worldPz, unexploredDensity,
                                         unexploredBrightness);
                                 case CLOUD -> cloudPixel(worldPx, worldPz, unexploredDensity, unexploredBrightness);
+                                case IMAGE -> {
+                                    if (unexploredImageCover) yield 0;
+                                    int imgColor = UnexploredImageStyle.getPixel(worldPx, worldPz);
+                                    yield imgColor != 0 ? imgColor : fogColor;
+                                }
                             };
                         } else {
                             if (chunkWaterTint != null && chunkWaterTint[local] != 0) {

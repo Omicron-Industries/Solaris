@@ -88,7 +88,8 @@ public final class SmoothShapes {
 
     private static ResourceLocation register(String name, NativeImage image) {
         DynamicTexture texture = new DynamicTexture(image);
-        texture.setFilter(true, false);
+        
+        texture.setFilter(false, false);
         ResourceLocation loc = new ResourceLocation(PhoenixSolaris.MOD_ID, "dynamic/" + name);
         Minecraft.getInstance().getTextureManager().register(loc, texture);
         return loc;

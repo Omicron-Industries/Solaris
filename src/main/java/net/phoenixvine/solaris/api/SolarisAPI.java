@@ -48,6 +48,7 @@ public final class SolarisAPI {
     public static final String FEATURE_SHOW_MOBS = "show_mobs";
     public static final String FEATURE_RAIL_NETWORK = "rail_network";
     public static final String FEATURE_UNEXPLORED_STYLE = "unexplored_style";
+    public static final String FEATURE_ZOOM_LIMITS = "zoom_limits";
 
     private static final Map<String, BooleanSupplier> FEATURE_GATES = new ConcurrentHashMap<>();
     private static final Map<ResourceLocation, Integer> DIMENSION_TIERS = new ConcurrentHashMap<>();
@@ -64,7 +65,7 @@ public final class SolarisAPI {
                 FEATURE_WAYPOINTS, FEATURE_MINIMAP, FEATURE_WORLD_MAP, FEATURE_UNDERGROUND_MAP,
                 FEATURE_SETTINGS_MENU, FEATURE_GOTO_COORDINATE, FEATURE_THEME_SELECT, FEATURE_HILLSHADING,
                 FEATURE_VIGNETTE, FEATURE_BLACK_AND_WHITE, FEATURE_CHUNK_GRID, FEATURE_SHOW_MOBS,
-                FEATURE_RAIL_NETWORK, FEATURE_UNEXPLORED_STYLE));
+                FEATURE_RAIL_NETWORK, FEATURE_UNEXPLORED_STYLE, FEATURE_ZOOM_LIMITS));
     }
 
     private static volatile boolean refreshPending = false;

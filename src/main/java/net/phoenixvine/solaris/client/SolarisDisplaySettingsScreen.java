@@ -31,7 +31,7 @@ public class SolarisDisplaySettingsScreen extends Screen {
     private static final int ROW_H = 24;
     private static final int HEADER_H = 24;
 
-    private static final int DISPLAY_GRID_ROWS = 10;
+    private static final int DISPLAY_GRID_ROWS = 11;
 
     private static final int HEADING_H = 12;
     private static final int GROUP_COUNT = 4;
@@ -228,6 +228,10 @@ public class SolarisDisplaySettingsScreen extends Screen {
             b.setMessage(claimsMinimapLabel());
             SolarisTexture.invalidateAll();
         }).bounds(col2X, y, colW, 18).build());
+        y += ROW_H;
+
+        addRenderableWidget(new MapZoomMinSlider(col1X, y, colW, 20));
+        addRenderableWidget(new MapZoomMaxSlider(col2X, y, colW, 20));
     }
 
     private void initWaypointsTab(int x, int y) {
@@ -403,6 +407,8 @@ public class SolarisDisplaySettingsScreen extends Screen {
         SolarisConfig.UNEXPLORED_BRIGHTNESS.save();
         SolarisConfig.SHOW_CLAIMS_MAP.save();
         SolarisConfig.SHOW_CLAIMS_MINIMAP.save();
+        SolarisConfig.ZOOM_MIN.save();
+        SolarisConfig.ZOOM_MAX.save();
         Minecraft.getInstance().setScreen(parent);
     }
 
@@ -612,6 +618,44 @@ public class SolarisDisplaySettingsScreen extends Screen {
         @Override
         protected void applyValue() {
             SolarisConfig.MINIMAP_ZOOM.set(1.0 + value * 7.0);
+        }
+    }
+
+    private static class MapZoomMinSlider extends AbstractSliderButton {
+
+        MapZoomMinSlider(int x, int y, int w, int h) {
+            super(x, y, w, h, Component.empty(), (SolarisConfig.ZOOM_MIN.get() - 0.05) / 0.95);
+            updateMessage();
+        }
+
+        @Override
+        protected void updateMessage() {
+            double zoomMin = 0.05 + value * 0.95;
+            setMessage(Component.literal("Map Zoom Out Limit: " + String.format("%.2f", zoomMin) + "x"));
+        }
+
+        @Override
+        protected void applyValue() {
+            SolarisConfig.ZOOM_MIN.set(0.05 + value * 0.95);
+        }
+    }
+
+    private static class MapZoomMaxSlider extends AbstractSliderButton {
+
+        MapZoomMaxSlider(int x, int y, int w, int h) {
+            super(x, y, w, h, Component.empty(), (SolarisConfig.ZOOM_MAX.get() - 1.0) / 47.0);
+            updateMessage();
+        }
+
+        @Override
+        protected void updateMessage() {
+            double zoomMax = 1.0 + value * 47.0;
+            setMessage(Component.literal("Map Zoom In Limit: " + String.format("%.0f", zoomMax) + "x"));
+        }
+
+        @Override
+        protected void applyValue() {
+            SolarisConfig.ZOOM_MAX.set(1.0 + value * 47.0);
         }
     }
 

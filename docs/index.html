@@ -22,19 +22,7 @@
       </label>
     </div>
 
-    <div id="options" class="hidden">
-      <label class="opt-toggle"><input type="checkbox" id="opt-hillshade" checked /> Hillshading</label>
-      <label class="opt-toggle"><input type="checkbox" id="opt-grid" /> Chunk grid</label>
-      <label class="opt-toggle">
-        Style:
-        <select id="opt-style" style="background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px;">
-          <option value="FOG">Fog</option>
-          <option value="STARFIELD">Starfield</option>
-          <option value="PHOENIX">Phoenix</option>
-          <option value="CLOUD">Cloud</option>
-        </select>
-      </label>
-    </div>
+    <button id="settings-toggle" class="hidden" type="button">⚙ Settings</button>
 
     <div id="meta" class="hidden">
       <span id="meta-world"></span>
@@ -58,6 +46,77 @@
       <div id="scalebar-line"></div>
       <div id="scalebar-label"></div>
     </div>
+
+    <aside id="settings-panel" class="hidden">
+      <div class="settings-header">
+        <span>Settings</span>
+        <button id="settings-close" type="button" aria-label="Close settings">&times;</button>
+      </div>
+      <div class="settings-body">
+
+        <section class="settings-section">
+          <h3>Display</h3>
+          <label class="opt-slider">Saturation <span class="opt-val" id="val-saturation">1.00</span>
+            <input type="range" id="opt-saturation" min="0" max="2" step="0.01" value="1" />
+          </label>
+          <label class="opt-slider">Contrast <span class="opt-val" id="val-contrast">1.00</span>
+            <input type="range" id="opt-contrast" min="0.2" max="2.5" step="0.01" value="1" />
+          </label>
+          <label class="opt-slider">Brightness <span class="opt-val" id="val-brightness">1.00</span>
+            <input type="range" id="opt-brightness" min="0.2" max="2.5" step="0.01" value="1" />
+          </label>
+          <label class="opt-slider">Tint Red <span class="opt-val" id="val-tint-r">1.00</span>
+            <input type="range" id="opt-tint-r" min="0.3" max="2" step="0.01" value="1" />
+          </label>
+          <label class="opt-slider">Tint Green <span class="opt-val" id="val-tint-g">1.00</span>
+            <input type="range" id="opt-tint-g" min="0.3" max="2" step="0.01" value="1" />
+          </label>
+          <label class="opt-slider">Tint Blue <span class="opt-val" id="val-tint-b">1.00</span>
+            <input type="range" id="opt-tint-b" min="0.3" max="2" step="0.01" value="1" />
+          </label>
+          <label class="opt-toggle"><input type="checkbox" id="opt-bw" /> Black &amp; white</label>
+          <label class="opt-toggle"><input type="checkbox" id="opt-vignette" /> Vignette</label>
+          <label class="opt-slider">Vignette strength <span class="opt-val" id="val-vignette">0.50</span>
+            <input type="range" id="opt-vignette-strength" min="0" max="1" step="0.01" value="0.5" />
+          </label>
+        </section>
+
+        <section class="settings-section">
+          <h3>Map</h3>
+          <label class="opt-toggle"><input type="checkbox" id="opt-hillshade" checked /> Hillshading</label>
+          <label class="opt-toggle"><input type="checkbox" id="opt-grid" /> Chunk grid</label>
+        </section>
+
+        <section class="settings-section">
+          <h3>Unexplored areas</h3>
+          <label class="opt-row">Style
+            <select id="opt-style">
+              <option value="FOG">Fog</option>
+              <option value="STARFIELD">Starfield</option>
+              <option value="PHOENIX">Phoenix</option>
+              <option value="CLOUD">Cloud</option>
+              <option value="IMAGE">Image</option>
+            </select>
+          </label>
+          <label class="opt-slider">Density <span class="opt-val" id="val-unexplored-density">1.00</span>
+            <input type="range" id="opt-unexplored-density" min="0.25" max="4" step="0.05" value="1" />
+          </label>
+          <label class="opt-slider">Brightness <span class="opt-val" id="val-unexplored-brightness">1.00</span>
+            <input type="range" id="opt-unexplored-brightness" min="0.25" max="2.5" step="0.05" value="1" />
+          </label>
+          <label id="opt-image-row" class="opt-row hidden">
+            <span class="file-btn file-btn-secondary">
+              Choose image
+              <input type="file" id="opt-unexplored-image" accept="image/*" />
+            </span>
+          </label>
+          <label id="opt-image-cover-row" class="opt-toggle hidden">
+            <input type="checkbox" id="opt-unexplored-cover" /> Cover whole map (instead of tiling)
+          </label>
+        </section>
+
+      </div>
+    </aside>
   </main>
 </div>
 

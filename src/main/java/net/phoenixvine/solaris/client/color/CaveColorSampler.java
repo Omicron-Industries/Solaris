@@ -22,11 +22,6 @@ public final class CaveColorSampler {
     private static final int TERRAIN_SCAN_LIMIT = 192;
     private static final int ROOF_AIR_LOOKAHEAD = 3;
 
-    // Modpacks add planetary/dimension terrain (Ad Astra's Mars/Moon stone, etc.) that vanilla
-    // and Forge tags don't recognize as "stone" or "terrain" — an allowlist of terrain blocks is
-    // never complete. Instead we blocklist namespaces that are reliably *never* terrain: heavy
-    // industrial mods whose pipe/cable/casing stacks can run dense and tall with no air gaps.
-    // Anything else defaults to "this is real ground" unless it's leaves or a thin covering.
     private static final Set<String> STRUCTURE_NAMESPACES = Set.of(
             "gtceu", "gregtech", "mekanism", "mekanismgenerators", "mekanismtools", "thermal",
             "immersiveengineering", "ae2", "appliedenergistics2", "industrialforegoing", "create",
@@ -35,12 +30,6 @@ public final class CaveColorSampler {
 
     private CaveColorSampler() {}
 
-    /**
-     * Whether this block is something to search past rather than treat as real ground: leaves,
-     * a thin covering with open air right beneath it (roof, floor, attic — any material), or a
-     * block from a known industrial/tech mod (whose pipe/cable/casing runs can be dense and tall
-     * with no air gaps, defeating the thin-covering check).
-     */
     private static boolean isLikelyStructure(Level level, BlockPos pos, BlockState state) {
         if (state.is(BlockTags.LEAVES)) return true;
 
@@ -59,11 +48,6 @@ public final class CaveColorSampler {
     public static boolean isUnderground(Level level, BlockPos pos) {
         int surfaceY = level.getHeight(Heightmap.Types.WORLD_SURFACE, pos.getX(), pos.getZ());
 
-        // Walk down from the column's topmost block, skipping over anything that reads as
-        // built/grown rather than real ground (leaves, a roof, floors, factory pipe/cable/machine
-        // stacks — however tall or dense) so a tower or canopy elsewhere in the column doesn't get
-        // mistaken for "the surface" here. Stops at the first real ground block, which is what
-        // actually determines depth.
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos(pos.getX(), surfaceY - 1, pos.getZ());
         int scanned = 0;
         while (scanned < TERRAIN_SCAN_LIMIT && cursor.getY() > level.getMinBuildHeight() + 1 &&
@@ -100,9 +84,6 @@ public final class CaveColorSampler {
                     BlockState state = level.getBlockState(cursor);
                     if (state.isAir()) continue;
 
-                    // Not every block (especially modded planetary/dimension terrain) sets a
-                    // vanilla MapColor — fall back to an averaged texture color like the surface
-                    // sampler does, instead of leaving the cell blank.
                     MapColor mapColor = state.getMapColor(level, cursor);
                     rgb = mapColor != MapColor.NONE ? mapColor.calculateRGBColor(MapColor.Brightness.NORMAL) :
                             packAbgr(BlockTextureColors.get(state));
